@@ -111,7 +111,7 @@ public final class ConnectionService extends Service {
         new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP),
         PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
     Notification.Builder status = new Notification.Builder(this, "ssh")
-        .setSmallIcon(R.drawable.ic_notification).setContentTitle("RemoteGPT · SSH")
+        .setSmallIcon(R.drawable.ic_notification).setContentTitle("LanGPT · SSH")
         .setContentText(summary).setContentIntent(open).setOnlyAlertOnce(true).setOngoing(true)
         .setVisibility(Notification.VISIBILITY_PRIVATE);
     PendingIntent stop = PendingIntent.getService(this, 1,
