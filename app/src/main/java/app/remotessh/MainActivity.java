@@ -1908,7 +1908,7 @@ public final class MainActivity extends Activity {
     if (!app.connected || version != app.remoteVersion || !version.needsRestart()) return;
     new AlertDialog.Builder(this)
         .setTitle("停止任务并重启？")
-        .setMessage("重启将立即停止这台远端电脑上由 RemoteGPT 托管的所有进行中对话和待处理审批。未完成的回复会中断。\n\n重启后 App 会自动重新连接，并使用已安装的 Codex "
+        .setMessage("重启将立即停止这台远端电脑上由 LanGPT 托管的所有进行中对话和待处理审批。未完成的回复会中断。\n\n重启后 App 会自动重新连接，并使用已安装的 Codex "
             + version.installed + "。")
         .setNegativeButton("取消", null)
         .setPositiveButton("停止任务并重启", (d, w) -> app.restartRemoteVersion(version))

@@ -40,7 +40,7 @@ def run(args, env=None, timeout=20):
 
 
 def fetch(url, limit=4 * 1024 * 1024):
-    request = urllib.request.Request(url, headers={'User-Agent': 'RemoteGPT-version-check', 'Accept': 'application/json'})
+    request = urllib.request.Request(url, headers={'User-Agent': 'LanGPT-version-check', 'Accept': 'application/json'})
     with urllib.request.urlopen(request, timeout=20) as response:
         data = response.read(limit + 1)
     if len(data) > limit:
