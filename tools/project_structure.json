@@ -1,0 +1,120 @@
+{
+  "default_java_line_budget": 450,
+  "line_budgets": {
+    "MainActivity": 1725,
+    "RemoteApp": 1780
+  },
+  "python_asset_line_budgets": {
+    "remote_session.py": 450,
+    "remote_maintenance.py": 330,
+    "conversation_state.py": 110,
+    "cli_host.py": 280,
+    "cli_events.py": 180
+  },
+  "modules": {
+    "application": [
+      "RemoteApp",
+      "ConversationStore",
+      "ConversationState",
+      "ConversationPreferences",
+      "TurnController",
+      "AttachmentController",
+      "DirectoryController",
+      "ForcedApprovalController",
+      "ModelRefreshScheduler"
+    ],
+    "protocol_transport": [
+      "SshTransport",
+      "TsnetSocketFactory",
+      "RpcClient",
+      "RpcException",
+      "ConnectionFailure",
+      "HostPins",
+      "ThreadSnapshot",
+      "ConnectionPreflight",
+      "RuntimeCapabilities",
+      "PersistentAssets",
+      "ExitNode"
+    ],
+    "data_configuration": [
+      "Profile",
+      "Vault",
+      "RemoteDirectory",
+      "RemoteVersion",
+      "ModelCatalog",
+      "ModelOptions",
+      "ModelSettings",
+      "ServiceTierOptions",
+      "PermissionMode",
+      "UsageLimits",
+      "ConversationJournal",
+      "InteractionHistory",
+      "ChatItem",
+      "Json",
+      "CryptoBox",
+      "TerminalBuffer",
+      "TerminalCommand",
+      "SshCredentials",
+      "HostHistory"
+    ],
+    "ui": [
+      "MainActivity",
+      "ProfileEditor",
+      "ModelPicker",
+      "DialogUi",
+      "RemoteBrowser",
+      "DirectoryPicker",
+      "RemoteScreens",
+      "QuestionForm",
+      "QuestionHistoryView",
+      "MessageBodyView",
+      "ConversationScrollView",
+      "ModelListScrollView",
+      "ImageDialog",
+      "ZoomImageView",
+      "LoadingSpinner",
+      "LiveProgressTextView",
+      "FilePicker",
+      "ImagePicker",
+      "Markdown",
+      "ConnectionSetupUi",
+      "PermissionPicker",
+      "WorkPanel",
+      "MathContentView",
+      "MathDrawable",
+      "MathGlyphs",
+      "MathMarkup",
+      "MathRenderer",
+      "MathSpan",
+      "SwipeActionLayout",
+      "TableContentView",
+      "TableMarkup",
+      "RuntimeControls",
+      "SshTerminalActivity",
+      "TerminalWebView",
+      "SandboxSettings",
+      "TsnetSetup"
+    ],
+    "media": [
+      "FileAttachment",
+      "ImageDocument",
+      "MediaFiles",
+      "ThumbnailCache",
+      "ThumbnailLoader",
+      "MessageImageTile"
+    ],
+    "background_notifications": [
+      "BubbleActivity",
+      "ConnectionService",
+      "LiveStatusNotifications",
+      "LiveActionReceiver",
+      "TsnetVpnService"
+    ],
+    "icons": [
+      "AppIconCatalog",
+      "AppIcons",
+      "IconView",
+      "PressFeedback"
+    ]
+  }
+}
