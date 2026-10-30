@@ -7,8 +7,8 @@ android {
         applicationId 'app.remotessh.hardened'
         minSdk 26
         targetSdk 35
-        versionCode 120
-        versionName 'V1.5.4'
+        versionCode 121
+        versionName 'V1.6'
         testInstrumentationRunner 'android.test.InstrumentationTestRunner'
     }
     compileOptions {
