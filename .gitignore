@@ -1,0 +1,36 @@
+# Build outputs and local SDK settings
+.gradle/
+**/build/
+local.properties
+*.apk
+*.aab
+*.log
+build-*.txt
+# Credentials, local CLI data and dependency caches
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.pem
+*.key
+**/.npm/
+**/node_modules/
+**/.dsh/
+**/.codex/
+**/.claude/
+**/sessions/
+__pycache__/
+*.py[cod]
+# IDE
+.idea/
+.kotlin/
+.venv/
+.DS_Store
+Thumbs.db
+*.swp
+/dist/
+/release-assets/
+
+# test scratch dirs (temporary repos, NFS debris)
+tools/scratch/

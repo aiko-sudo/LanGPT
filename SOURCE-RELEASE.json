@@ -1,0 +1,23 @@
+{
+  "project": "LanGPT",
+  "version": "V1.2.16",
+  "versionCode": 68,
+  "sourceCommit": "3621a76d50944d7f4ba8fdbf6dec20983f06d65d",
+  "format": "clean source snapshot; no Git history",
+  "exportAdjustments": [
+    "Removed machine-specific aapt2 override",
+    "Replaced private LAN proxy URL in documentation comment with loopback example",
+    "Made developer-test home and SDK paths portable",
+    "Updated README, gitignore, and build-only GitHub workflow",
+    "Includes V1.2.15 reconnect/history fixes and V1.2.16 cache isolation, provider authority, compact secondary menus"
+  ],
+  "excluded": [
+    "Git history",
+    "build artifacts and logs",
+    "CLI session data",
+    "npm caches and node_modules",
+    "personal configuration and signing material",
+    "historical reports and screenshots",
+    "compiled bytecode caches"
+  ]
+}

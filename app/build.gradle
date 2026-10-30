@@ -1,0 +1,36 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'app.remotessh'
+    compileSdk 36
+    defaultConfig {
+        // hardened 版独立包名: 与官方版可共存安装互不覆盖(lzy129审计加固版)
+        applicationId 'app.remotessh.hardened'
+        minSdk 26
+        targetSdk 35
+        versionCode 116
+        versionName 'V1.5'
+        testInstrumentationRunner 'android.test.InstrumentationTestRunner'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    buildTypes { release { minifyEnabled false } }
+    packaging { resources { excludes += ['META-INF/versions/**/OSGI-INF/MANIFEST.MF'] } }
+    testOptions {
+        unitTests.includeAndroidResources = true
+        unitTests.all {
+            systemProperty 'robolectric.dependency.repo.url', 'https://repo.maven.apache.org/maven2'
+            systemProperty 'remote.ssh.fixture', project.hasProperty('sshFixture') ? 'true' : 'false'
+        }
+    }
+}
+dependencies {
+    implementation files('libs/tailscale.aar')
+    implementation 'ru.noties:jlatexmath-android:0.2.0'
+    implementation 'com.github.mwiede:jsch:2.28.0'
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.80'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
+}
