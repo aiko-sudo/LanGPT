@@ -1,2 +1,0 @@
-# 出口节点实现任务
-用户要求在 LanGPT 应用沙箱增加出口节点复选启动框，要求真实生效、允许选择 tailnet 已批准出口节点。项目私有树 /home/jc/uclaw/project/RemoteGPT-hardened，Go 代码 /home/jc/uclaw/project/langpt-tsnet-proto/go。禁止修改 NAS、安装软件、发包、改版本、commit、push、安装手机应用；保留所有未提交改动。先检查 tailscale v1.88.2 的 LocalClient status/EditPrefs 出口控制语义、tsnet Dial 和现有 tun 转发。实现真实节点列表/选择和复选开关，并确保系统 VPN 配置只针对白名单；仅在确实能安全实现时启用全流量路由，出口不可用/失效不得静默直连；不要误称 UDP 已支持。请用实测或源码证明，加入自动化测试覆盖节点枚举、启用禁用、空名单、不存在节点与失败回退、DNS/UDP、安全关闭等。不能保证完整可用则不要伪造，实现可独立验证的安全子集并说明阻塞。工作完成记录 docs/exit-node-implementation-result.md，列改动、真实测试、未解决风险。不要启动构建/发包，不动应用用户设备或任何真实服务。

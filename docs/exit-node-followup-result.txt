@@ -1,7 +1,0 @@
-出口节点功能**尚未完成，当前 Android 应用不能使用该开关**。
-
-已在 Go 工作区加入基于 LocalClient Status 的出口节点枚举，以及使用 MaskedPrefs 选择或清除节点的接口。自动化测试覆盖了节点筛选、不可用节点拒绝、清除和错误传播；`go test ./...` 通过。独立 `go build` 因默认缓存只读失败，使用临时缓存的重试未完成即中止。
-
-Android 节点选择、IPv4/IPv6 默认路由、VPN 生命周期与失败处理、AAR 集成仍未完成。现有转发器除 DNS 外不支持 UDP；也不能保证 VPN 进程退出后阻止直连。
-
-实际改动和验证限制已记录在 [实现结果](/home/jc/uclaw/project/RemoteGPT-hardened/docs/exit-node-implementation-result.md)。未修改 NAS、提交、推送、发包或操作手机。

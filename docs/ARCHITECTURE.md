@@ -99,4 +99,4 @@ Canvas 由 terminal.js 在 open 后 loadAddon，激活失败释放部分 addon �
 
 2026-10-28：用量请求的 attempt 在成功、失败、超时和断开时失效；通用请求错误分支不再改写该状态，弹窗关闭回调只释放自身引用。项目路径排序复用 RemoteFiles 的专用比较器，时间缺失排末尾；终端仅设置系统导航栏颜色／对比，保留既有 insets 和 IME 布局。
 
-2026-10-29：`SandboxSettings` 管理应用及出口选择；`ExitNode` 是 Go 绑定兼容桥；`TsnetVpnService` 串行管理 TUN、出口配置和生命周期，排除自身应用。
+2026-10-29：`SandboxSettings` 管理应用及转发选择；`ExitNode` 是 Go 绑定兼容桥；`TsnetVpnService` 串行管理 TUN、转发配置和生命周期，排除自身应用。

@@ -37,7 +37,7 @@ public final class TsnetVpnService extends VpnService {
   public int onStartCommand(Intent intent, int flags, int startId) {
     String action = intent == null ? "" : intent.getAction();
     if (ACTION_STOP.equals(action)) {
-      // 同步停：不等 worker 队列（可能被启动流程阻塞），立即关 TUN 让 VPN 图标消失。
+      // 同步停：不等 worker 队列（可能被启动流程阻塞），立即关 TUN 让 钥匙图标消失。
       generation.incrementAndGet();
       shutdown();
       stopSelf();
@@ -85,12 +85,12 @@ public final class TsnetVpnService extends VpnService {
         TsnetSetup.startIfEnabled(getApplicationContext());
         waitNodeReady();
         if (generation.get() != token) return;
-        if (useExit && exitId.isEmpty()) throw new IllegalStateException("未选择出口节点");
+        if (useExit && exitId.isEmpty()) throw new IllegalStateException("未选择转发节点");
         if (useExit || ExitNode.supported()) ExitNode.select(useExit ? exitId : "");
         if (generation.get() != token) { shutdown(); return; }
         if (useExit) b.addRoute("0.0.0.0", 0).addRoute("::", 0);
         tunnel = b.establish();
-        if (tunnel == null) { notify("VPN 建立失败（可能被其他 VPN 占用）"); main.post(() -> { if (generation.get() == token) stopSelf(); }); return; }
+        if (tunnel == null) { notify("隧道建立失败（可能被其他网络服务占用）"); main.post(() -> { if (generation.get() == token) stopSelf(); }); return; }
         // fd 所有权留在 Java（getFd 不转移）：停用时 tunnel.close() 同步关闭 fd，
         // Go 泵 Read 立即 EBADF 退出，系统即刻撤销 VPN 网络/图标（实测 detachFd 后图标残留 60s+）。
         Tailscale.startTunVpn(tunnel.getFd(), 1280);
@@ -133,7 +133,7 @@ public final class TsnetVpnService extends VpnService {
   @Override
   public void onRevoke() { stopSelf(); }
 
-  /** App 从最近任务划掉时停沙箱：VPN 图标随之消失（用户预期行为）。 */
+  /** App 从最近任务划掉时停沙箱：钥匙图标随之消失（用户预期行为）。 */
   @Override
   public void onTaskRemoved(android.content.Intent rootIntent) {
     generation.incrementAndGet();
@@ -145,7 +145,7 @@ public final class TsnetVpnService extends VpnService {
   @Override
   public void onDestroy() {
     generation.incrementAndGet();
-    // 同步关 fd（立即撤销 VPN 图标），再经 worker 复跑 shutdown 幂等清场。
+    // 同步关 fd（立即撤销 钥匙图标），再经 worker 复跑 shutdown 幂等清场。
     shutdown();
     worker.execute(this::shutdown);
     super.onDestroy();

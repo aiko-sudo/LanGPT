@@ -26,7 +26,7 @@ import java.util.Set;
 
 /**
  * 应用沙箱白名单设置：勾选允许借用内置 Tailscale 的应用。
- * 出口节点是弹窗顶部的独立区块（带指示勾选框，状态读自偏好，与应用
+ * 转发节点是弹窗顶部的独立区块（带指示勾选框，状态读自偏好，与应用
  * 列表完全解耦——V1.4.15 前出口行混在列表首行，勾选状态与应用列表的
  * checked 机制互相干扰，出现「勾上了但框没勾」）。应用列表用固定高度
  * （约屏高 42%）的自定义 ListView：系统多选列表会随数百个应用占满整
@@ -71,7 +71,7 @@ final class SandboxSettings {
     root.setOrientation(LinearLayout.VERTICAL);
     root.setPadding(density * 20, density * 8, density * 20, 0);
 
-    // ── 出口节点独立区块（与应用列表完全分离）──────────────────────
+    // ── 转发节点独立区块（与应用列表完全分离）──────────────────────
     LinearLayout exitRow = new LinearLayout(a);
     exitRow.setOrientation(LinearLayout.HORIZONTAL);
     exitRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -157,9 +157,9 @@ final class SandboxSettings {
     });
   }
 
-  /** 查询可用出口节点并让用户单选；选择结果通过 onUpdate 就地刷新区块显示。 */
+  /** 查询可用转发节点并让用户单选；选择结果通过 onUpdate 就地刷新区块显示。 */
   private static void pickExitNode(final Activity a, final Set<String> chosen, final Runnable onUpdate) {
-    toast(a, "正在查询出口节点…");
+    toast(a, "正在查询转发节点…");
     new Thread(() -> {
       // 节点可能尚未启动（冷启动 10s+）：先拉起并等就绪，否则列表必空。
       final android.content.Context app = a.getApplicationContext();
@@ -180,7 +180,7 @@ final class SandboxSettings {
       List<ExitNode.Option> options = null;
       try { options = ExitNode.online(); }
       catch (Exception e) {
-        error = e.getMessage() == null ? "查询出口节点失败" : e.getMessage();
+        error = e.getMessage() == null ? "查询转发节点失败" : e.getMessage();
         if (error.contains("tsnet not running")) error = "内置 Tailscale 未运行";
       }
       final List<ExitNode.Option> result = options;
@@ -197,12 +197,12 @@ final class SandboxSettings {
 
   private static void showNodePicker(final Activity a, final List<ExitNode.Option> result, final String failure, final Runnable onUpdate) {
     if (a.isFinishing() || a.isDestroyed()) return;
-    if (failure != null || result == null) { toast(a, failure != null ? failure : "查询出口节点失败"); return; }
+    if (failure != null || result == null) { toast(a, failure != null ? failure : "查询转发节点失败"); return; }
     android.content.SharedPreferences p = a.getSharedPreferences(PREFS, 0);
     if (result.isEmpty()) {
-      // 出口节点不能在 App 内手动添加：来自 tailnet 中其他设备的通告。
+      // 转发节点不能在 App 内手动添加：来自 tailnet 中其他设备的通告。
       ArrayAdapter<String> hint = new ArrayAdapter<String>(a, android.R.layout.simple_list_item_1, new String[]{
-          "出口节点由 Tailscale 网络中的其他设备提供",
+          "转发节点由 Tailscale 网络中的其他设备提供",
           "在目标设备开启 exit node 通告，",
           "并在 Tailscale 管理台批准后自动出现",
           "知道了"}) {
@@ -241,7 +241,7 @@ final class SandboxSettings {
         .setSingleChoiceItems(adapter, checked, (d, which) -> {
           if (which == result.size()) {
             a.getSharedPreferences(PREFS, 0).edit().putBoolean("exit_enabled", false).apply();
-            toast(a, "已停用出口节点");
+            toast(a, "已停用转发节点");
           } else {
             ExitNode.Option option = result.get(which);
             a.getSharedPreferences(PREFS, 0).edit()
@@ -260,12 +260,12 @@ final class SandboxSettings {
         Math.round(a.getResources().getDisplayMetrics().widthPixels * .60f), ViewGroup.LayoutParams.WRAP_CONTENT);
   }
 
-  /** 准备 VPN 授权（首次会弹系统确认框）并启动沙箱服务。 */
+  /** 准备网络授权（首次会弹系统确认框）并启动沙箱服务。 */
   static void ensureStarted(Activity a) {
     Intent prepare = VpnService.prepare(a);
     if (prepare != null) {
       try { a.startActivityForResult(prepare, TsnetVpnService.VPN_REQUEST); }
-      catch (Exception e) { toast(a, "无法请求 VPN 权限"); }
+      catch (Exception e) { toast(a, "无法请求网络权限"); }
       return;
     }
     start(a);
@@ -279,7 +279,7 @@ final class SandboxSettings {
 
   static void stop(Context context) {
     // 双通道：ACTION_STOP 即时处理；stopService 兜底触发 onDestroy→shutdown。
-    // 实测部分机型 startService 到不了 onStartCommand（无打点日志），仅靠单通道 fd 不关、VPN 图标残留。
+    // 实测部分机型 startService 到不了 onStartCommand（无打点日志），仅靠单通道 fd 不关、钥匙图标残留。
     try {
       context.startService(new Intent(context, TsnetVpnService.class).setAction(TsnetVpnService.ACTION_STOP));
     } catch (Throwable ignored) { }

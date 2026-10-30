@@ -99,7 +99,7 @@ final class ConnectionFailure {
     if (upstreamForbidden(stderr)) result += "\n\n远端 Codex 连接模型服务的 WebSocket 收到 HTTP 403 拒绝。此错误发生在远端到模型服务的链路，不是手机 SSH 密码错误。需在同一远端用户下检查 Codex 登录状态、账户访问权限和代理/网络策略；仅凭日志不能确定是哪一项。UNDICI 实验性警告本身不是失败原因。若远端程序已退出，客户端无法继续接收该进程的输出。";
     if (phase.contains("TCP") || reason(error).contains("ConnectException") || reason(error).contains("UnknownHostException"))
       result += "\n\n尚未进入 SSH 身份认证。请核对目标地址和端口；若同手机其他 SSH 客户端能连接同一地址，检查 Tailscale → 头像 → 按应用分流，确保 Remote（app.remotessh）未被排除，并检查系统是否禁止本应用联网。也可重新连接 Tailscale 后重试。";
-    else if (phase.contains("SSH")) result += "\n\n如使用 Tailscale：确认手机 VPN 已连接、主机在线、访问规则允许目标端口。MagicDNS 解析失败可改填 100.x 地址；普通 SSH 用密码/私钥，Tailscale SSH 用免密码方式。若要求重新验证，请打开 Tailscale App 完成验证后重试。";
+    else if (phase.contains("SSH")) result += "\n\n如使用 Tailscale：确认手机 Tailscale 已连接、主机在线、访问规则允许目标端口。MagicDNS 解析失败可改填 100.x 地址；普通 SSH 用密码/私钥，Tailscale SSH 用免密码方式。若要求重新验证，请打开 Tailscale App 完成验证后重试。";
     if (exitStatus >= 0) result += "\n远端退出码：" + exitStatus;
     if (exitStatus == 127) result += stderr != null && stderr.contains("python3")
         ? "\nSSH 已连接，但找不到 python3。请在同一 SSH 账号安装 Python 3.8 或以上并加入非交互 PATH，或手动关闭远端持久会话后重连。"
