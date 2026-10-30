@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import tailscale.Tailscale;
 
 /**
- * 应用沙箱：只把白名单应用的流量送入内置 tsnet（进程内 Tailscale）。
+ * 应用沙箱：只把白名单应用的网络访问送入内置 tsnet（进程内 Tailscale）。
  * 安全铁律：一个 addAllowedApplication 都未成功时绝不 establish——
  * 空名单会被系统解释为“所有应用走 VPN”，等于沙箱失效。
  * LanGPT 自身不进白名单：它有进程内通道，且必须避开 TUN 环路。
@@ -85,7 +85,7 @@ public final class TsnetVpnService extends VpnService {
         TsnetSetup.startIfEnabled(getApplicationContext());
         waitNodeReady();
         if (generation.get() != token) return;
-        if (useExit && exitId.isEmpty()) throw new IllegalStateException("未选择转发节点");
+        if (useExit && exitId.isEmpty()) throw new IllegalStateException("未选择网络节点");
         if (useExit || ExitNode.supported()) ExitNode.select(useExit ? exitId : "");
         if (generation.get() != token) { shutdown(); return; }
         if (useExit) b.addRoute("0.0.0.0", 0).addRoute("::", 0);
