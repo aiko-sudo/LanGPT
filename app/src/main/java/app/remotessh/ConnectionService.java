@@ -219,7 +219,7 @@ public final class ConnectionService extends Service {
   @Override
   public int onStartCommand(Intent i, int flags, int id) {
     if (i != null && "disconnect".equals(i.getAction())) {
-      // 通知栏“断开连接”：与其他入口一致的全链收场（SSH+沙箱 VPN+tsnet+退出）。
+      // 通知栏“断开连接”：与其他入口一致的全链收场（SSH+沙箱隧道+tsnet+退出）。
       ((RemoteApp) getApplication()).disconnectAll(getApplicationContext());
       stopSelf();
     }

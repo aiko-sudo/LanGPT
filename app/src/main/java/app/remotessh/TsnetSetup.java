@@ -75,7 +75,7 @@ final class TsnetSetup {
       if (i == 0) pathLine.append("\n连接：");
       pathLine.append(i == 0 ? "" : "；").append(paths.optString(i));
     }
-    // 出口节点生效状态：沙箱内公网转发依赖它。
+    // 转发节点生效状态：沙箱内公网转发依赖它。
     String exit = state.optString("exit", "");
     String exitLine = exit.isEmpty() ? "\n出口：未使用" : "\n出口：" + exit;
 

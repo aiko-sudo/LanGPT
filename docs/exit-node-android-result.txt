@@ -1,7 +1,0 @@
-已完成出口节点的 Android 源码接入，并加强 Go 配置确认：白名单界面可查询在线节点并单选、保存选择；VPN 启动时先设置出口，再为白名单应用添加 IPv4 和 IPv6 默认路由。服务加入了串行生命周期处理，并显式排除 LanGPT 自身。界面也提示了 UDP 限制和退出 VPN 后可能恢复直连。
-
-**当前功能尚不能在现有包中使用**：检查发现现有 `tailscale.aar` 不包含出口节点接口，界面会明确拒绝启用。后续需要生成并替换包含新 Go 接口的 AAR，再验证真实出口连通性及 VPN 生命周期。
-
-验证结果：两项源码接线检查通过；图标检查发现已有输出与规格不一致。Go 测试因缓存权限失败，改用 `/tmp` 后长时间无输出并已中止，因此没有通过结果。遵照要求，未构建 APK、安装、提交、push 或操作设备与 NAS。
-
-完整改动、命令结果及未完成风险见 [exit-node-android-result.txt](/home/jc/uclaw/project/RemoteGPT-hardened/docs/exit-node-android-result.txt)。

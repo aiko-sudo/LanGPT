@@ -1825,7 +1825,7 @@ public final class MainActivity extends Activity {
     }
     if (request == TsnetVpnService.VPN_REQUEST) {
       if (result == RESULT_OK) SandboxSettings.start(this);
-      else toast("未授予 VPN 权限，沙箱未启用");
+      else toast("未授予网络权限，沙箱未启用");
       return;
     }
     if (request == 46) {

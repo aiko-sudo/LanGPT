@@ -19,9 +19,9 @@ final class ExitNode {
       Method method = Tailscale.class.getMethod(name, types);
       return method.invoke(null, args);
     } catch (NoSuchMethodException e) {
-      throw new Exception("内置 Tailscale 库不支持出口节点，需更新库", e);
+      throw new Exception("内置 Tailscale 库不支持转发节点，需更新库", e);
     } catch (InvocationTargetException e) {
-      throw new Exception("出口节点操作失败", e.getCause());
+      throw new Exception("转发节点操作失败", e.getCause());
     }
   }
   static List<Option> online() throws Exception {
