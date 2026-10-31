@@ -10,11 +10,11 @@ Model inference and Codex login happen on the remote host; the phone handles int
 
 ## License
 
-This project is derived from [RemoteGPT](https://github.com/qzh775226913-ai/RemoteGPT); the original copyright and license are fully retained, under its **[Free Use and Commercial Reuse License 1.0](LICENSE)** (Chinese text authoritative). Key points:
+LanGPT is an independent, unofficial client modified by aiko-sudo from [RemoteGPT](https://github.com/qzh775226913-ai/RemoteGPT), unaffiliated with OpenAI. Modifications include the SSH client, terminal and networking features. The current license text is **[RemoteGPT Use and Reuse License 1.2](LICENSE)** (Chinese authoritative); the historical [1.0 license](LICENSE.RemoteGPT-1.0) is retained for reference.
 
-- **Free use**: individuals and organizations may install and run it free of charge (including for work and commercial projects) and modify/build it for internal use.
-- **Distribution**: unmodified copies may be shared free of charge with this license, copyright and source intact; no charging or ad monetization on that distribution.
-- **Prior written authorization required**: selling or paid hosting/subscription/ad-supported offerings; publishing rebranded, renamed or repackaged modifications; closed-source delivery or relicensing.
+- **Use and collaboration**: use, modification and public collaboration are permitted; non-commercial distribution and renaming to distinguish the source are allowed subject to the license conditions.
+- **Distribution conditions**: retain copyright, source, license and third-party notices; identify the modifier, changes and unofficial status, and provide a public link to the complete corresponding source alongside each APK.
+- **Prior written authorization**: required for offering commercially to third parties, closed-source delivery, relicensing or distribution that does not meet section 2. A newer license does not automatically replace existing licenses for historical materials; see the authoritative text.
 
 The app optionally uses Tailscale technology.
 
