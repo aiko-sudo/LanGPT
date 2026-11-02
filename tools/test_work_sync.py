@@ -120,6 +120,6 @@ public class WorkSyncTest {
     assert 'showProcess(activity, ui, task)' in panel and 'setVerticalScrollBarEnabled(true)' in panel
     assert 'heightPixels * 0.60f' in panel and 'Gravity.BOTTOM' in panel
     assert 'Math.min(shown[0] + 30' in panel
-    assert 'setOnLongClickListener' in panel and '删除该任务记录？' in panel
+    assert 'setOnLongClickListener' in panel and '.setTitle(UiText.get(R.string.work_text_104))' in panel
     print('PASS refresh cleanup, global delete routing, no hamburger, shared menu and centered header source wiring')
 if __name__=='__main__':main()

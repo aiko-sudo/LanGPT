@@ -1,0 +1,13 @@
+<resources>
+    <string name="permission_language">zh</string>
+    <string name="permission_inherit_conversation">沿用当前对话</string>
+    <string name="permission_option_description">权限选项：%1$s</string>
+    <string name="permission_force_allow">强制允许</string>
+    <string name="permission_update_hint">发送消息以更新权限</string>
+    <string name="permission_title">权限</string>
+    <string name="permission_force_title">全部允许(强制)</string>
+    <string name="permission_force_warning">新的审批权限生效前，客户端将会自动允许全部审批请求，继续吗？</string>
+    <string name="permission_cancel">取消</string>
+    <string name="permission_continue">继续</string>
+    <string name="permission_force_unavailable">对话正在恢复或仅查看历史，未启用强制允许</string>
+</resources>

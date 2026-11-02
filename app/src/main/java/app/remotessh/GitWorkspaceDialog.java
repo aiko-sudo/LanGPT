@@ -49,7 +49,7 @@ public final class GitWorkspaceDialog {
     content=ui.column();
     int pad=ui.dp(16); content.setPadding(pad,pad,pad,pad);
     scroll.addView(content); root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-    retry=ui.button("重试",false,this::refresh);
+    retry=ui.button(UiText.get(R.string.work_text_158),false,this::refresh);
     retry.setVisibility(View.GONE);
     root.addView(retry);
     window=ui.window(root);
@@ -68,24 +68,24 @@ public final class GitWorkspaceDialog {
   }
   /** Map host refusals to actionable Chinese hints; keep the original text visible. */
   private static String explain(String error) {
-    if(error.contains("not found on host"))return "主机找不到 git 命令：请安装 Git 或把 git 加入 PATH 后重试";
-    if(error.contains("Not inside a Git working tree"))return "当前文件夹不是 Git 仓库：此功能只适用于有 .git 的项目根目录，普通文件夹无法使用";
-    if(error.contains("Select the repository root"))return "当前路径在仓库子目录里：请回到仓库根目录再打开";
-    if(error.contains("Bare repository"))return "裸仓库（只有历史没有工作文件）不支持";
-    if(error.contains("Shallow repositories"))return "浅克隆仓库暂不支持";
-    if(error.contains("Submodules"))return "含子模块的仓库暂不支持";
-    if(error.contains("must be clean"))return "工作树有未提交改动：先提交或清理后再操作";
-    if(error.contains("in progress"))return "仓库正在进行 merge/rebase 等操作，完成后再试";
-    if(error.contains("Another app workspace"))return "另一个工作区操作正在进行，稍后刷新";
-    return "请检查此项目是否为 Git 仓库根目录后重试";
+    if(error.contains("not found on host"))return UiText.get(R.string.work_text_174);
+    if(error.contains("Not inside a Git working tree"))return UiText.get(R.string.work_text_175);
+    if(error.contains("Select the repository root"))return UiText.get(R.string.work_text_176);
+    if(error.contains("Bare repository"))return UiText.get(R.string.work_text_177);
+    if(error.contains("Shallow repositories"))return UiText.get(R.string.work_text_178);
+    if(error.contains("Submodules"))return UiText.get(R.string.work_text_179);
+    if(error.contains("must be clean"))return UiText.get(R.string.work_text_180);
+    if(error.contains("in progress"))return UiText.get(R.string.work_text_181);
+    if(error.contains("Another app workspace"))return UiText.get(R.string.work_text_182);
+    return UiText.get(R.string.work_text_183);
   }
   private void text(String value) {
     TextView view=ui.text(value,15); view.setTextIsSelectable(true); content.addView(view);
   }
   private void confirm(String message,Runnable action) {
     if(!valid() || busy)return;
-    child=new AlertDialog.Builder(activity).setTitle("需要确认").setMessage(message)
-        .setNegativeButton("取消",null).setPositiveButton("确认",(d,w)->{if(valid())action.run();}).create();
+    child=new AlertDialog.Builder(activity).setTitle(UiText.get(R.string.work_text_184)).setMessage(message)
+        .setNegativeButton(UiText.get(R.string.work_text_004),null).setPositiveButton(UiText.get(R.string.work_text_185),(d,w)->{if(valid())action.run();}).create();
     child.show();
   }
   private JSONObject request(String action) { return Json.obj("action",action,"project",project); }
@@ -93,7 +93,7 @@ public final class GitWorkspaceDialog {
     if(busy || !valid()){ scroll.finishRefresh(); return; }
     boolean statusRequest=params.optString("action").equals("status");
     if(statusRequest)retry.setVisibility(View.GONE);
-    busy=true; content.removeAllViews(); text("检查中…");
+    busy=true; content.removeAllViews(); text(UiText.get(R.string.work_text_186));
     app.executeBackground(()->{
       JSONObject result;
       try(InputStream in=app.getAssets().open("git_workspace.py");
@@ -102,7 +102,7 @@ public final class GitWorkspaceDialog {
         if(transport==null || app.connectionGeneration()!=generation
             || app.currentTransport()!=transport || app.profile!=profile)throw new IllegalStateException();
         result=transport.maintenance(bytes.toString("UTF-8"),params);
-      }catch(Exception error){result=Json.obj("error","SSH 工作区操作失败；请检查连接并刷新仓库状态后重试");}
+      }catch(Exception error){result=Json.obj("error",UiText.get(R.string.work_text_187));}
       final JSONObject reply=result;
       app.main.post(()->{
         busy=false;
@@ -111,7 +111,7 @@ public final class GitWorkspaceDialog {
         if(reply.has("error")){
           String error=reply.optString("error");
           content.removeAllViews();
-          text("无法加载："+(params.optString("action").equals("status") ? explain(error)+"\n("+error+")" : error));
+          text(UiText.get(R.string.work_text_188)+(params.optString("action").equals("status") ? explain(error)+"\n("+error+")" : error));
           if(statusRequest)retry.setVisibility(View.VISIBLE);
           return;
         }
@@ -122,26 +122,26 @@ public final class GitWorkspaceDialog {
   private void refresh() {
     call(request("status"), status->{
       content.removeAllViews();
-      text("在项目旁建 Git 隔离副本，任务改动不影响主目录，确认后快进合并回来");
-      if(!status.optBoolean("hasGit")) text("✗ 未安装 Git → 此功能不可用");
-      else if(!status.optBoolean("isGitRoot")) text("✗ 非 Git 仓库根目录 → 此功能不可用");
+      text(UiText.get(R.string.work_text_189));
+      if(!status.optBoolean("hasGit")) text(UiText.get(R.string.work_text_190));
+      else if(!status.optBoolean("isGitRoot")) text(UiText.get(R.string.work_text_191));
       else {
-        text("✓ Git 仓库根目录");
-        text(status.optBoolean("dirty") ? "✗ 未提交改动 "+status.optInt("dirtyCount")+" 个 → 请先提交" : "✓ 工作目录干净");
-        text(status.optBoolean("inProgress") ? "✗ Git 操作进行中 → 请先完成" : "✓ 无进行中的 Git 操作");
-        text("分支："+status.optString("branch")+"\nHEAD："+status.optString("head"));
+        text(UiText.get(R.string.work_text_192));
+        text(status.optBoolean("dirty") ? UiText.get(R.string.work_text_193)+status.optInt("dirtyCount")+UiText.get(R.string.work_text_194) : UiText.get(R.string.work_text_195));
+        text(status.optBoolean("inProgress") ? UiText.get(R.string.work_text_196) : UiText.get(R.string.work_text_197));
+        text(UiText.get(R.string.work_text_198)+status.optString("branch")+"\nHEAD："+status.optString("head"));
         if(!status.optString("reason").isEmpty() && !status.optBoolean("inProgress")) text("✗ "+status.optString("reason"));
       }
       if(!status.optBoolean("ready"))return;
-      content.addView(ui.button("创建独立工作区",false,()->confirm(
-          "从此 HEAD 创建唯一分支和隔离目录？现有任务目录不会改变。\n"+status.optString("head"),
+      content.addView(ui.button(UiText.get(R.string.work_text_199),false,()->confirm(
+          UiText.get(R.string.work_text_200) + "\n"+status.optString("head"),
           ()->call(Json.obj("action","create","project",project,"confirmed",true,
-              "targetHead",status.optString("head")),created->{text("已创建："+created.optString("created"));refresh();}))));
+              "targetHead",status.optString("head")),created->{text(UiText.get(R.string.work_text_201)+created.optString("created"));refresh();}))));
       call(request("list"),reply->{
         content.removeAllViews();
-        text("在项目旁建 Git 隔离副本，任务改动不影响主目录，确认后快进合并回来");
-        text("✓ Git 仓库根目录\n✓ 工作目录干净\n✓ 无进行中的 Git 操作\n分支："+status.optString("branch")+"\nHEAD："+status.optString("head"));
-          content.addView(ui.button("创建独立工作区",false,()->confirm("从此 HEAD 创建唯一分支和隔离目录？\n"+status.optString("head"),
+        text(UiText.get(R.string.work_text_189));
+        text(UiText.get(R.string.work_text_192)+"\n"+UiText.get(R.string.work_text_195)+"\n"+UiText.get(R.string.work_text_197)+"\n"+UiText.get(R.string.work_text_198)+status.optString("branch")+"\nHEAD："+status.optString("head"));
+          content.addView(ui.button(UiText.get(R.string.work_text_199),false,()->confirm(UiText.get(R.string.work_text_202) + "\n"+status.optString("head"),
             ()->call(Json.obj("action","create","project",project,"confirmed",true,"targetHead",status.optString("head")),created->refresh()))));
       JSONArray rows=reply.optJSONArray("workspaces");
       if(rows==null)return;
@@ -150,7 +150,7 @@ public final class GitWorkspaceDialog {
         String path=row.optString("path");
         content.addView(ui.button(row.optString("branch")+"\n"+path,false,()->{
           if(!valid() || busy)return;
-          child=CenteredMenu.show(activity,ui.fg,new String[]{"使用此工作区","只读预检 / 确认合并…"},which->{
+          child=CenteredMenu.show(activity,ui.fg,new String[]{UiText.get(R.string.work_text_203),UiText.get(R.string.work_text_204)},which->{
             if(!valid() || busy)return;
             if(which==0){close();if(useWorkspace!=null)useWorkspace.accept(path);}
             else call(Json.obj("action","preflight","project",project,"source",path),preview->preview(preview));
@@ -163,19 +163,19 @@ public final class GitWorkspaceDialog {
   private void preview(JSONObject preview) {
     JSONObject target=preview.optJSONObject("target"), source=preview.optJSONObject("source");
     if(target==null || source==null)return;
-    String detail="目标："+target.optString("branch")+"\n"+target.optString("head")
-        +"\n来源："+source.optString("branch")+"\n"+source.optString("head")
-        +"\n目标/来源有改动："+target.optBoolean("dirty")+" / "+source.optBoolean("dirty")
-        +"\n并行改动重叠："+preview.optJSONArray("overlap")
-        +"\n冲突路径："+preview.optJSONArray("conflicts")
-        +"\n冲突预检通过："+preview.optBoolean("conflictFree")
-        +"\n仅支持干净快进；分叉历史拒绝写入。";
+    String detail=UiText.get(R.string.work_text_205)+target.optString("branch")+"\n"+target.optString("head")
+        +"\n" + UiText.get(R.string.work_text_206)+source.optString("branch")+"\n"+source.optString("head")
+        +"\n" + UiText.get(R.string.work_text_207)+target.optBoolean("dirty")+" / "+source.optBoolean("dirty")
+        +"\n" + UiText.get(R.string.work_text_208)+preview.optJSONArray("overlap")
+        +"\n" + UiText.get(R.string.work_text_209)+preview.optJSONArray("conflicts")
+        +"\n" + UiText.get(R.string.work_text_210)+preview.optBoolean("conflictFree")
+        +"\n" + UiText.get(R.string.work_text_211);
     text(detail);
-    if(!preview.optBoolean("mergeSupported")){text("合并不可用；请检查脏文件、冲突或分叉历史。");return;}
-    content.addView(ui.button("确认后快进合并…",false,()->confirm(detail
-        +"\n请暂停其他 Git 写入者。确认将来源快进合并到目标？不会推送或删除工作区。",
+    if(!preview.optBoolean("mergeSupported")){text(UiText.get(R.string.work_text_212));return;}
+    content.addView(ui.button(UiText.get(R.string.work_text_213),false,()->confirm(detail
+        +"\n" + UiText.get(R.string.work_text_214),
         ()->call(Json.obj("action","merge","project",project,"source",source.optString("path"),
             "targetHead",target.optString("head"),"sourceHead",source.optString("head"),
-            "confirmed",true),merged->{text("快进合并完成");refresh();}))));
+            "confirmed",true),merged->{text(UiText.get(R.string.work_text_215));refresh();}))));
   }
 }

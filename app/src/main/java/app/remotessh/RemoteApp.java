@@ -575,9 +575,33 @@ public final class RemoteApp extends Application {
   PermissionMode displayedPermission() {return permissionMode==PermissionMode.INHERIT ? effectivePermissionMode:permissionMode;}
 
 
+  AppLanguage language;
+
+  @Override public void onConfigurationChanged(android.content.res.Configuration config) {
+    super.onConfigurationChanged(config);
+    AppLanguage.refresh(this);
+    if (language != null) language.notifyPresentation();
+  }
+
   @Override
   public void onCreate() {
     super.onCreate();
+    language = new AppLanguage(this);
+    UsageLimits.setLocaleProvider(UiText::locale);
+    ModelOptions.setLocaleProvider(UiText::locale);
+    ServiceTierOptions.setLocaleProvider(UiText::locale);
+    // 沙箱自动启动（勾选“自动启动”且上次启用）：延迟 10s，避开启动期主线程/节点就绪竞争。
+    if (getSharedPreferences("sandbox", 0).getBoolean("autoStart", false)
+        && getSharedPreferences("sandbox", 0).getBoolean("enabled", false)) {
+      main.postDelayed(() -> {
+        android.content.SharedPreferences p = getSharedPreferences("sandbox", 0);
+        if (!p.getBoolean("autoStart", false) || !p.getBoolean("enabled", false)) return;
+        if (TsnetVpnService.running()) return;
+        try { if (android.net.VpnService.prepare(this) != null) return; }
+        catch (Exception e) { return; }
+        SandboxSettings.start(this);
+      }, 10000);
+    }
     java.security.Security.removeProvider("BC");
     java.security.Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
     // hardened: purge stale plaintext temp attachments/images left in cacheDir by prior runs
@@ -1023,7 +1047,7 @@ public final class RemoteApp extends Application {
     final RpcClient client = rpc;
     final int g = generation;
     modelsLoading = true;
-    modelsStatus = "正在刷新模型…";
+    modelsStatus = UiText.get(R.string.model_catalog_loading);
     changed();
     worker.execute(() -> {
       try {
@@ -1036,14 +1060,14 @@ public final class RemoteApp extends Application {
           models = refreshed;
           serviceTierProtocol |= ServiceTierOptions.hasProtocolMetadata(refreshed);
           modelsLoading = false;
-          modelsStatus = models.length() == 0 ? "远端未返回可选模型，可使用远端默认" : "已同步远端模型";
+          modelsStatus = models.length() == 0 ? UiText.get(R.string.model_catalog_empty) : UiText.get(R.string.model_catalog_synced);
           changed();
         });
       } catch (Exception e) {
         main.post(() -> {
           if (g != generation || client != rpc) return;
           modelsLoading = false;
-          modelsStatus = "刷新失败，保留上次列表：" + message(e);
+          modelsStatus = UiText.get(R.string.model_catalog_error) + message(e);
           changed();
         });
       }

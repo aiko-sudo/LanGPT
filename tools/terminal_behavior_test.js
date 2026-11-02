@@ -72,8 +72,10 @@ const text = t => t.buffer.active.getLine(0).translateToString(true);
   context.window=context;
   vm.runInContext(fs.readFileSync('app/src/main/assets/terminal/terminal.js','utf8'),context);
   context.fit();
+  // The native bridge supplies the banner after ready, using the app language.
+  context.terminalStatus('Supports -p port\r\n/help command help\r\n/saved saved credentials\r\n/forget user@host delete credentials\r\nEnter ssh user@host to connect\r\n-------------------------\r\n');
   await write(terminal,'');
-  assert.equal(context.terminalCopy(), '支持 -p 端口\n/help 命令帮助\n/saved 已存凭证\n/forget user@host 删除凭证\n输入 ssh user@host 连接\n-------------------------');
+  assert.equal(context.terminalCopy(), 'Supports -p port\n/help command help\n/saved saved credentials\n/forget user@host delete credentials\nEnter ssh user@host to connect\n-------------------------');
   assert.equal(terminal.buffer.active.cursorX,0);
   assert.equal(terminal.buffer.active.cursorY,6,'cursor immediately follows separator');
   assert.equal(canvasLoads,1,'canvas activated after terminal open');

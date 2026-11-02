@@ -4,6 +4,14 @@ import java.util.*;
 import org.json.*;
 
 final class ModelOptions {
+  private static volatile java.util.function.Supplier<Locale> localeProvider = Locale::getDefault;
+  static void setLocaleProvider(java.util.function.Supplier<Locale> provider) {
+    localeProvider = provider == null ? Locale::getDefault : provider;
+  }
+  private static boolean chinese() {
+    Locale locale = localeProvider.get();
+    return locale == null || !"en".equals(locale.getLanguage());
+  }
   static String id(JSONObject model) { return model.isNull("model") || model.optString("model").trim().isEmpty()
       ? model.optString("id", "").trim() : model.optString("model").trim(); }
   static List<String> efforts(JSONObject model) {
@@ -18,7 +26,7 @@ final class ModelOptions {
     return values;
   }
   static String displayName(JSONArray models, String id) {
-    if (id.isEmpty()) return "默认模型";
+    if (id.isEmpty()) return chinese() ? "默认模型" : "Default model";
     for (int i = 0; i < models.length(); i++) {
       JSONObject model = models.optJSONObject(i);
       if (model != null && id(model).equals(id) && !model.isNull("displayName")
@@ -27,16 +35,17 @@ final class ModelOptions {
     return id;
   }
   static String label(String effort) {
+    boolean zh = chinese();
     switch (effort) {
-      case "": return "默认";
-      case "none": return "None";
-      case "minimal": return "Minimal";
-      case "low": return "Low";
-      case "medium": return "Medium";
-      case "high": return "High";
-      case "xhigh": return "Extra High";
-      case "max": return "Max";
-      case "ultra": return "Ultra";
+      case "": return zh ? "默认" : "Default";
+      case "none": return zh ? "无" : "None";
+      case "minimal": return zh ? "最低" : "Minimal";
+      case "low": return zh ? "低" : "Low";
+      case "medium": return zh ? "中" : "Medium";
+      case "high": return zh ? "高" : "High";
+      case "xhigh": return zh ? "极高" : "Extra High";
+      case "max": return zh ? "最大" : "Max";
+      case "ultra": return zh ? "超高" : "Ultra";
       default: return effort;
     }
   }

@@ -18,7 +18,7 @@ def main():
                    'offerSave(full,name,size)','dx*dx+dy*dy>slop*slop']:
         assert wiring in browser, wiring
     assert 'row.setOnLongClickListener' not in browser
-    with tempfile.TemporaryDirectory(dir=ROOT/'tools',prefix='sftp-clipboard-test-', ignore_cleanup_errors=True) as folder:
+    with tempfile.TemporaryDirectory(prefix='sftp-clipboard-test-', ignore_cleanup_errors=True) as folder:
         folder=Path(folder)
         stubs={
           'android/content/Context.java':'package android.content;public class Context {public static final String CLIPBOARD_SERVICE="clipboard";}',
@@ -33,6 +33,8 @@ def main():
         for name,text in stubs.items():p=folder/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(text)
         test=folder/'ClipboardTest.java'
         test.write_text('''package app.remotessh;
+class R {static class string {static final int extra_sftp_clip_label=1,extra_sftp_copied=2;}}
+class UiText {static String get(int id){return id==1 ? "文件路径" : "路径已复制";}}
 class ClipboardTest {
  static class Activity {android.content.ClipboardManager clipboard=new android.content.ClipboardManager();Object getSystemService(String key){return clipboard;}}
  static class Ui {Activity activity=new Activity();int dp(int n){return n;}}
@@ -56,7 +58,7 @@ class ClipboardTest {
         subprocess.run(['java','-cp',str(folder)+':'+str(JAR),'app.remotessh.ClipboardTest'],check=True)
     activity=(SRC/'MainActivity.java').read_text();panel=(SRC/'WorkPanel.java').read_text();menu=(SRC/'CenteredMenu.java').read_text()
     assert 'CenteredMenu.show(this,fg,muted,version,options' in activity and 'CenteredMenu.show(activity, ui.fg' in panel
-    assert 'new String[]{"新建会话", "最近报错"}' in panel and '当前项目与对话' not in panel
+    assert 'new String[]{UiText.get(R.string.work_text_081), UiText.get(R.string.work_text_082)}' in panel and '当前项目与对话' not in panel
     assert 'label.setGravity(Gravity.CENTER)' in menu and 'widthPixels*.60f' in menu and '.setTitle(' not in menu
     print('PASS shared title-free centered 60%-width menu and exactly two work actions (source checks)')
 if __name__=='__main__':main()

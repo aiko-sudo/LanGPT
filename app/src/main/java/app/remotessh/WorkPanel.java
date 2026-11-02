@@ -44,10 +44,10 @@ final class WorkPanel {
 
   private static String status(String value) {
     switch (value) {
-      case "inProgress": return "进行中";
-      case "completed": return "已完成";
-      case "failed": return "失败";
-      case "interrupted": return "已中断";
+      case "inProgress": return UiText.get(R.string.work_text_060);
+      case "completed": return UiText.get(R.string.work_text_061);
+      case "failed": return UiText.get(R.string.work_text_062);
+      case "interrupted": return UiText.get(R.string.work_text_063);
       default: return value;
     }
   }
@@ -55,7 +55,7 @@ final class WorkPanel {
   private static void itemRow(RemoteScreens ui, LinearLayout group, String title,
       String state, String detail, String key, Set<String> expanded) {
     LinearLayout row = ui.column();
-    TextView heading = ui.text(title.isEmpty() ? "操作详情" : title, 14);
+    TextView heading = ui.text(title.isEmpty() ? UiText.get(R.string.work_text_064) : title, 14);
     heading.setMaxLines(2);
     heading.setEllipsize(android.text.TextUtils.TruncateAt.END);
     row.addView(heading);
@@ -66,12 +66,20 @@ final class WorkPanel {
       row.addView(subtitle);
     }
     if (detail != null && !detail.trim().isEmpty()) {
-      TextView toggle = ui.text(expanded.contains(key) ? "收起详情" : "展开详情", 12);
+      TextView toggle = ui.text(expanded.contains(key) ? UiText.get(R.string.work_text_065) : UiText.get(R.string.work_text_066), 12);
       toggle.setTextColor(0xff007aff);
       toggle.setPadding(0, ui.dp(8), 0, ui.dp(2));
       row.addView(toggle);
       TextView content = ui.text(detail, 12);
-      content.setTextIsSelectable(true);
+      // selectable 文本会吞掉横滑手势，导致内容区无法切换 Tab（用户实测回归）；
+      // 改为长按复制整段，滑动恢复，复制能力保留。
+      content.setOnLongClickListener(v -> {
+        android.content.ClipboardManager cm = (android.content.ClipboardManager)
+            ui.activity.getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("detail", detail));
+        android.widget.Toast.makeText(ui.activity, UiText.get(R.string.work_text_216), android.widget.Toast.LENGTH_SHORT).show();
+        return true;
+      });
       content.setTypeface(Typeface.MONOSPACE);
       content.setPadding(0, ui.dp(10), 0, 0);
       content.setVisibility(expanded.contains(key) ? View.VISIBLE : View.GONE);
@@ -80,7 +88,7 @@ final class WorkPanel {
         boolean open = !expanded.contains(key);
         if (open) expanded.add(key); else expanded.remove(key);
         content.setVisibility(open ? View.VISIBLE : View.GONE);
-        toggle.setText(open ? "收起详情" : "展开详情");
+        toggle.setText(open ? UiText.get(R.string.work_text_065) : UiText.get(R.string.work_text_066));
       });
     }
     group.addView(row);
@@ -99,12 +107,12 @@ final class WorkPanel {
     LinearLayout head = ui.row();
     java.util.List<ChatItem> steps = new java.util.ArrayList<>();
     for (ChatItem item : task.items) if (!item.prose()) steps.add(item);
-    TextView name = ui.text((task.title.isEmpty() ? "操作详情" : task.title) + " · 共 " + steps.size() + " 步", 15);
+    TextView name = ui.text((task.title.isEmpty() ? UiText.get(R.string.work_text_064) : task.title) + UiText.get(R.string.work_text_067) + steps.size() + UiText.get(R.string.work_text_068), 15);
     name.setTypeface(null, Typeface.BOLD);
     name.setMaxLines(1);
     name.setEllipsize(android.text.TextUtils.TruncateAt.END);
     head.addView(name, new LinearLayout.LayoutParams(0, ui.dp(40), 1));
-    head.addView(ui.button("收起", false, process::dismiss));
+    head.addView(ui.button(UiText.get(R.string.work_text_069), false, process::dismiss));
     sheet.addView(head);
     ScrollView body = new ScrollView(activity);
     body.setVerticalScrollBarEnabled(true);
@@ -122,11 +130,11 @@ final class WorkPanel {
             task.threadId + ":" + step.id, detailOpen);
       }
       if (shown[0] < steps.size()) {
-        TextView more = ui.button("显示更多（剩余 " + (steps.size() - shown[0]) + " 项）", false, () -> {});
+        TextView more = ui.button(UiText.get(R.string.work_text_070) + (steps.size() - shown[0]) + UiText.get(R.string.work_text_071), false, () -> {});
         more.setOnClickListener(button -> { rows.removeView(more); fill[0].run(); });
         rows.addView(more);
       } else if (steps.isEmpty()) {
-        TextView none = ui.text("无过程记录", 13);
+        TextView none = ui.text(UiText.get(R.string.work_text_072), 13);
         none.setTextColor(ui.muted);
         rows.addView(none);
       }
@@ -147,7 +155,7 @@ final class WorkPanel {
     LinearLayout root = ui.column();
     LinearLayout header = ui.row();
     header.setPadding(ui.dp(12), ui.dp(4), ui.dp(12), ui.dp(4));
-    TextView title = ui.text("工作面板", 21);
+    TextView title = ui.text(UiText.get(R.string.work_text_073), 21);
     title.setTypeface(null, Typeface.BOLD);
     title.setGravity(Gravity.CENTER_VERTICAL);
     title.setIncludeFontPadding(false);
@@ -156,7 +164,7 @@ final class WorkPanel {
     int[] selectedFilter = {0};
     Runnable[] renderRef = new Runnable[1];
     LinearLayout filters = ui.row();
-    String[] filterNames = {"全部", "待处理", "运行中"};
+    String[] filterNames = {UiText.get(R.string.work_text_074), UiText.get(R.string.work_text_075), UiText.get(R.string.work_text_076)};
     TextView[] filterLabels = new TextView[filterNames.length];
     for(int n=0;n<filterNames.length;n++) {
       final int choice=n;
@@ -174,19 +182,19 @@ final class WorkPanel {
     Runnable timeout=()->{
       if(panelOpen[0] && refreshing[0]) {
         refreshing[0]=false;scrollRef[0].finishRefresh();
-        refreshHint.setText("刷新超时，可再次下拉重试");refreshHint.setVisibility(View.VISIBLE);
+        refreshHint.setText(UiText.get(R.string.work_text_077));refreshHint.setVisibility(View.VISIBLE);
       }
     };
     PullRefreshScrollView scroll=new PullRefreshScrollView(activity,()->{
       if(!app.connected) {
-        scrollRef[0].finishRefresh();refreshHint.setText("请先连接电脑");refreshHint.setVisibility(View.VISIBLE);return;
+        scrollRef[0].finishRefresh();refreshHint.setText(UiText.get(R.string.work_text_078));refreshHint.setVisibility(View.VISIBLE);return;
       }
       int request=++refreshSequence[0];refreshing[0]=true;refreshGeneration[0]=app.connectionGeneration();
       refreshHint.removeCallbacks(timeout);refreshHint.postDelayed(timeout,15000);
       app.refreshWorkPanel(failure->{
         if(!panelOpen[0] || request!=refreshSequence[0])return;
         refreshing[0]=false;refreshHint.removeCallbacks(timeout);scrollRef[0].finishRefresh();
-        if(failure!=null){refreshHint.setText("刷新失败，请下拉重试");refreshHint.setVisibility(View.VISIBLE);}
+        if(failure!=null){refreshHint.setText(UiText.get(R.string.work_text_079));refreshHint.setVisibility(View.VISIBLE);}
       });
     },message->{refreshHint.setText(message);refreshHint.setVisibility(message.isEmpty()?View.GONE:View.VISIBLE);});
     scrollRef[0]=scroll;
@@ -202,18 +210,18 @@ final class WorkPanel {
             return true;
           }
         });
-    scroll.setOnTouchListener((view,event)->{tabSwipe.onTouchEvent(event);return false;});
+    scroll.setPanelFlingDetector(tabSwipe);
     LinearLayout body = ui.column();
     body.setPadding(ui.dp(16), 0, ui.dp(16), ui.dp(24));
     scroll.addView(body);
     root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
     Dialog dialog = ui.window(root);
-    View more = ui.icon("more", "更多对话操作", () -> {});
-    more.setContentDescription("更多对话操作");
+    View more = ui.icon("more", UiText.get(R.string.work_text_080), () -> {});
+    more.setContentDescription(UiText.get(R.string.work_text_080));
     more.setBackground(null);
     header.addView(more, new LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)));
     more.setOnClickListener(v -> CenteredMenu.show(activity, ui.fg,
-        new String[]{"新建会话", "最近报错"}, which -> {
+        new String[]{UiText.get(R.string.work_text_081), UiText.get(R.string.work_text_082)}, which -> {
           dialog.dismiss();if(which==0)start.run();else error.run();
         }));
     java.util.List<Runnable> clockUpdates = new java.util.ArrayList<>();
@@ -248,30 +256,30 @@ final class WorkPanel {
         projects.computeIfAbsent(path, ignored -> new java.util.ArrayList<>()).add(task);
       }
       LinearLayout overview = card(ui, body);
-      TextView state = ui.text(!app.connected ? "连接已断开 · 状态待同步"
-          : "运行 " + active + " · 待处理 " + attention + " · 待审批 " + approvals, 17);
+      TextView state = ui.text(!app.connected ? UiText.get(R.string.work_text_083)
+          : UiText.get(R.string.work_text_084) + active + UiText.get(R.string.work_text_085) + attention + UiText.get(R.string.work_text_086) + approvals, 17);
       state.setTypeface(null, Typeface.BOLD);
       overview.addView(state);
-      note(ui, overview, "点击任务进入；返回手势回到此面板，不中断执行");
+      note(ui, overview, UiText.get(R.string.work_text_087));
       if (projects.isEmpty()) note(ui, body, !app.connected && selectedFilter[0]>=2
-          ? "连接后同步任务状态" : "当前筛选下暂无任务");
+          ? UiText.get(R.string.work_text_088) : UiText.get(R.string.work_text_089));
       for (java.util.Map.Entry<String, java.util.List<ConversationState>> entry : projects.entrySet()) {
         String path = entry.getKey();
         LinearLayout section = card(ui, body);
-        TextView projectTitle = ui.text((path.isEmpty() ? "远端默认目录" : RemoteDirectory.name(path))
-            + " · " + entry.getValue().size() + " 个任务", 16);
+        TextView projectTitle = ui.text((path.isEmpty() ? UiText.get(R.string.work_text_090) : RemoteDirectory.name(path))
+            + " · " + entry.getValue().size() + UiText.get(R.string.work_text_091), 16);
         projectTitle.setTypeface(null, Typeface.BOLD);
         section.addView(projectTitle);
         for (ConversationState task : entry.getValue()) {
           LinearLayout taskRow = ui.column();
           taskRow.setPadding(0, ui.dp(12), 0, ui.dp(10));
-          TextView taskTitle = ui.text(task.title.isEmpty() ? "未命名任务" : task.title, 15);
+          TextView taskTitle = ui.text(task.title.isEmpty() ? UiText.get(R.string.work_text_092) : task.title, 15);
           taskTitle.setMaxLines(1);
           taskTitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
           taskRow.addView(taskTitle);
           boolean running = task.remoteRunning || task.busy;
-          String taskState = !app.connected ? "状态待同步" : !task.approvals.isEmpty() ? "待审批"
-              : running ? "运行中" : task.error.isEmpty() ? "空闲 / 已结束" : "出现错误";
+          String taskState = !app.connected ? UiText.get(R.string.work_text_093) : !task.approvals.isEmpty() ? UiText.get(R.string.work_text_094)
+              : running ? UiText.get(R.string.work_text_076) : task.error.isEmpty() ? UiText.get(R.string.work_text_095) : UiText.get(R.string.work_text_096);
           TextView elapsed = ui.text(taskState + " · " + app.taskProgress(task.threadId).elapsed(System.currentTimeMillis()), 12);
           elapsed.setTextColor(ui.muted);
           taskRow.addView(elapsed);
@@ -291,13 +299,13 @@ final class WorkPanel {
             progress.setPadding(0, ui.dp(6), 0, 0);
             taskRow.addView(progress);
           }
-          TextView counts = ui.text("活动完成 " + done + "/" + tools + " · 文件变更 " + files + " · 点击进入", 12);
+          TextView counts = ui.text(UiText.get(R.string.work_text_097) + done + "/" + tools + UiText.get(R.string.work_text_098) + files + UiText.get(R.string.work_text_099), 12);
           counts.setTextColor(0xff007aff);
           counts.setPadding(0, ui.dp(6), 0, 0);
           // Only this explicit label opens the task, so the card body stays free for tab swiping.
           counts.setOnClickListener(v -> {
             if (!app.canSwitchConversation()) {
-              android.widget.Toast.makeText(activity, "正在同步会话或上传附件，请稍候", android.widget.Toast.LENGTH_SHORT).show();
+              android.widget.Toast.makeText(activity, UiText.get(R.string.work_text_100), android.widget.Toast.LENGTH_SHORT).show();
               return;
             }
             dialog.dismiss();
@@ -306,16 +314,16 @@ final class WorkPanel {
           taskRow.addView(counts);
           TaskResult result=app.taskInbox.result(profileId,task.threadId);
           if(!running && result!=null) {
-            TextView resultTitle=ui.text(result.label()+(app.taskInbox.unread(profileId,task.threadId)?" · 未读结果":""),14);
+            TextView resultTitle=ui.text(result.label()+(app.taskInbox.unread(profileId,task.threadId)?UiText.get(R.string.work_text_101):""),14);
             resultTitle.setTypeface(null,Typeface.BOLD);resultTitle.setPadding(0,ui.dp(10),0,0);
             resultTitle.setTextColor(result.failed()?0xffdf4b43:ui.fg);taskRow.addView(resultTitle);
             TextView summary=ui.text(result.preview(),13);summary.setMaxLines(3);
             summary.setEllipsize(android.text.TextUtils.TruncateAt.END);taskRow.addView(summary);
-            TextView resultAction=ui.text("查看结果 · 改动 "+result.paths.size()+" · 执行 "+result.commands.size(),13);
+            TextView resultAction=ui.text(UiText.get(R.string.work_text_102)+result.paths.size()+UiText.get(R.string.work_text_103)+result.commands.size(),13);
             resultAction.setTextColor(0xff007aff);resultAction.setPadding(0,ui.dp(8),0,ui.dp(8));
             resultAction.setOnClickListener(v->{
               android.app.AlertDialog details=new android.app.AlertDialog.Builder(activity)
-                  .setTitle(result.label()).setMessage(result.details()).setPositiveButton("关闭",null).show();
+                  .setTitle(result.label()).setMessage(result.details()).setPositiveButton(UiText.get(R.string.work_text_015),null).show();
               TextView message=details.findViewById(android.R.id.message);
               if(message!=null)message.setTextIsSelectable(true);
               app.taskInbox.read(profileId,task.threadId,result);app.changed();
@@ -326,16 +334,16 @@ final class WorkPanel {
           // Long-press a card to delete residue entries (e.g. unnamed stubs the remote forgot).
           taskRow.setOnLongClickListener(v -> {
             new android.app.AlertDialog.Builder(activity)
-                .setTitle("删除该任务记录？")
-                .setMessage((task.title.isEmpty() ? "未命名任务" : task.title) + "\n将从远端与本地一并移除；远端已丢失时仅清本地。")
-                .setNegativeButton("取消", null)
-                .setPositiveButton("删除", (d, w) -> app.deleteThread(task.threadId, failure -> {
-                  if (failure == null) android.widget.Toast.makeText(activity, "已删除", android.widget.Toast.LENGTH_SHORT).show();
-                  else android.widget.Toast.makeText(activity, "删除失败：" + failure.getMessage(), android.widget.Toast.LENGTH_SHORT).show();
+                .setTitle(UiText.get(R.string.work_text_104))
+                .setMessage((task.title.isEmpty() ? UiText.get(R.string.work_text_092) : task.title) + "\n" + UiText.get(R.string.work_text_105))
+                .setNegativeButton(UiText.get(R.string.work_text_004), null)
+                .setPositiveButton(UiText.get(R.string.work_text_106), (d, w) -> app.deleteThread(task.threadId, failure -> {
+                  if (failure == null) android.widget.Toast.makeText(activity, UiText.get(R.string.work_text_107), android.widget.Toast.LENGTH_SHORT).show();
+                  else android.widget.Toast.makeText(activity, UiText.get(R.string.work_text_108) + failure.getMessage(), android.widget.Toast.LENGTH_SHORT).show();
                 })).show();
             return true;
           });
-          TextView toggle = ui.text("展开过程", 12);
+          TextView toggle = ui.text(UiText.get(R.string.work_text_109), 12);
           toggle.setTextColor(ui.muted);
           toggle.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
           toggle.setPadding(0, ui.dp(4), 0, ui.dp(8));

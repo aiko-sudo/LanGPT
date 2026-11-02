@@ -61,7 +61,7 @@ public class TaskInboxTest {
     app=(SRC/'RemoteApp.java').read_text();panel=(SRC/'WorkPanel.java').read_text()
     assert 'taskInbox.completed(' in app and 'new ArrayList<>(resultItems.values()), historical)' in app
     assert 'taskInbox.started(' in app and 'd.turnId = p.optString("turnId", turnId)' in app
-    assert '"全部", "待处理", "运行中"' in panel
+    assert 'UiText.get(R.string.work_text_074), UiText.get(R.string.work_text_075), UiText.get(R.string.work_text_076)' in panel
     assert 'taskInbox.read(profileId,task.threadId,result)' in panel and 'result.details()' in panel
     print('PASS per-conversation event/result UI source wiring (not Android interaction tests)')
 if __name__=='__main__':main()

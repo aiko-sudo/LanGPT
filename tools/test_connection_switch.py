@@ -1,7 +1,7 @@
 """Exercise extracted production switch methods on JVM; no SSH or model calls."""
 from pathlib import Path
 import subprocess,tempfile
-from test_history_navigation import method
+from test_history_navigation import method, java_text_stubs, assert_resource
 ROOT=Path(__file__).resolve().parents[1]
 SRC=ROOT/'app/src/main/java/app/remotessh'
 
@@ -10,6 +10,7 @@ def main():
     methods='\n'.join(method(source,key).replace('private void','void') for key in
         ['  private void connectProfile(', '  private void switchConnection('])
     java='''import java.util.*;
+''' + java_text_stubs(methods) + '''
 interface Listener {void click(Object d,int w);}
 class AlertDialog {
  static Listener positive;static int prompts;
@@ -77,7 +78,9 @@ public class SwitchTest {
     assert initialization.count(marker)==1 and initialization.index(marker)>initialization.index('connected = true;')
     assert 'ConnectionPicker.show' in method(source,'  private void editCurrentProfile()')
     picker=(SRC/'ConnectionPicker.java').read_text()
-    assert all(s in picker for s in ['编辑当前连接','重试当前连接','返回原连接','RelativeSizeSpan','case "claude": return "CC"'])
+    for name, label in [('main_text_82','编辑当前连接'),('main_text_80','重试当前连接'),('main_text_81','返回原连接')]:
+        assert_resource(picker,name,label)
+    assert all(s in picker for s in ['RelativeSizeSpan','case "claude": return "CC"'])
     switch=method(source,'  private void switchConnection(')
     assert 'reconnectAndResume' not in switch and 'app.resume(' not in switch
     assert switch.index('beginConnect(p);')<switch.index('switchingConnection=true;')

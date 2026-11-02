@@ -20,12 +20,18 @@ final class MessageBodyView extends LinearLayout {
     Block(TableMarkup.Table table) {this.code=false;this.language="";this.text=table.raw;this.table=table;}
   }
   private final int fg, muted, panel;
+  private final int textSize, lineSpacing;
   private final Consumer<String> open, copy;
   private String source;
 
   MessageBodyView(Context context, int fg, int muted, int panel, Consumer<String> open, Consumer<String> copy) {
+    this(context, fg, muted, panel, open, copy, 16, 5);
+  }
+  MessageBodyView(Context context, int fg, int muted, int panel, Consumer<String> open, Consumer<String> copy,
+      int textSize, int lineSpacing) {
     super(context); setOrientation(VERTICAL);
     this.fg=fg; this.muted=muted; this.panel=panel; this.open=open; this.copy=copy;
+    this.textSize=textSize; this.lineSpacing=lineSpacing;
   }
   private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
   private TextView text(String value, int size, int color) {
@@ -114,10 +120,10 @@ final class MessageBodyView extends LinearLayout {
       }
       if (!block.code) {
         if(MathMarkup.containsMath(block.text)) {
-          MathContentView formulas=new MathContentView(getContext(),fg,muted,panel,open,copy);
+          MathContentView formulas=new MathContentView(getContext(),fg,muted,panel,open,copy,textSize,lineSpacing);
           formulas.setSource(block.text);addView(formulas,new LayoutParams(-1,-2));continue;
         }
-        TextView prose=text("", 16, fg); prose.setLineSpacing(dp(5),1);
+        TextView prose=text("", textSize, fg); prose.setLineSpacing(dp(lineSpacing),1);
         prose.setIncludeFontPadding(false);
         CharSequence rendered=proseText(block.text);prose.setText(rendered);
         prose.setVisibility(rendered.length()==0?GONE:VISIBLE);
@@ -129,14 +135,14 @@ final class MessageBodyView extends LinearLayout {
       box.setBackground(background); box.setPadding(dp(12),dp(4),dp(12),dp(12));
       LayoutParams bp=new LayoutParams(-1,-2); addView(box,bp);
       LinearLayout header=new LinearLayout(getContext()); header.setGravity(android.view.Gravity.CENTER_VERTICAL);
-      TextView label=text(block.language.isEmpty() ? "文本" : block.language,12,muted);
+      TextView label=text(block.language.isEmpty() ? getContext().getString(R.string.media_text) : block.language,12,muted);
       header.addView(label,new LayoutParams(0,-2,1));
-      TextView button=text("复制",13,fg); button.setGravity(android.view.Gravity.CENTER); button.setMinHeight(dp(48));
-      button.setPadding(dp(12),0,dp(12),0); button.setContentDescription("复制内容块 " + (++index));
+      TextView button=text(getContext().getString(R.string.media_copy),13,fg); button.setGravity(android.view.Gravity.CENTER); button.setMinHeight(dp(48));
+      button.setPadding(dp(12),0,dp(12),0); button.setContentDescription(getContext().getString(R.string.media_copy_block, ++index));
       button.setEnabled(!block.text.isEmpty()); PressFeedback.apply(button,(fg & 0xffffff)>0x808080);
       button.setOnClickListener(v -> copy.accept(block.text)); header.addView(button); box.addView(header);
       TextView code=text(block.text,14,fg); code.setTypeface(Typeface.MONOSPACE); code.setTextIsSelectable(true);
-      code.setHorizontallyScrolling(true); code.setContentDescription("可复制内容块 " + index);
+      code.setHorizontallyScrolling(true); code.setContentDescription(getContext().getString(R.string.media_copyable_block, index));
       HorizontalScrollView horizontal=new HorizontalScrollView(getContext()); horizontal.setFillViewport(true);
       horizontal.addView(code,new HorizontalScrollView.LayoutParams(-2,-2)); box.addView(horizontal,new LayoutParams(-1,-2));
     }

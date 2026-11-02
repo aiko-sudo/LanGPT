@@ -56,7 +56,7 @@ public final class TsnetVpnService extends VpnService {
       boolean useExit = prefs.getBoolean("exit_enabled", false);
       String exitId = prefs.getString("exit_id", "");
       Builder b = new Builder()
-          .setSession("LanGPT 应用沙箱")
+          .setSession(UiText.get(R.string.sandbox_session))
           .setMtu(1280)
           .addAddress("198.18.0.1", 15)
           .addAddress("fd00::1", 64)
@@ -76,7 +76,7 @@ public final class TsnetVpnService extends VpnService {
         catch (Exception ignored) { /* 未安装的应用跳过 */ }
       }
       if (allowed == 0) {
-        notify("白名单内没有已安装的应用，沙箱未启用");
+        notify(UiText.get(R.string.sandbox_no_apps));
         main.post(() -> { if (generation.get() == token) stopSelf(); });
         return;
       }
@@ -85,21 +85,21 @@ public final class TsnetVpnService extends VpnService {
         TsnetSetup.startIfEnabled(getApplicationContext());
         waitNodeReady();
         if (generation.get() != token) return;
-        if (useExit && exitId.isEmpty()) throw new IllegalStateException("未选择网络节点");
+        if (useExit && exitId.isEmpty()) throw new IllegalStateException(UiText.get(R.string.sandbox_no_exit));
         if (useExit || ExitNode.supported()) ExitNode.select(useExit ? exitId : "");
         if (generation.get() != token) { shutdown(); return; }
         if (useExit) b.addRoute("0.0.0.0", 0).addRoute("::", 0);
         tunnel = b.establish();
-        if (tunnel == null) { notify("隧道建立失败（可能被其他网络服务占用）"); main.post(() -> { if (generation.get() == token) stopSelf(); }); return; }
+        if (tunnel == null) { notify(UiText.get(R.string.sandbox_tunnel_failed)); main.post(() -> { if (generation.get() == token) stopSelf(); }); return; }
         // fd 所有权留在 Java（getFd 不转移）：停用时 tunnel.close() 同步关闭 fd，
         // Go 泵 Read 立即 EBADF 退出，系统即刻撤销 VPN 网络/图标（实测 detachFd 后图标残留 60s+）。
         Tailscale.startTunVpn(tunnel.getFd(), 1280);
         if (generation.get() != token) { shutdown(); return; }
         active = this;
-        notify("应用沙箱已启用：" + allowed + " 个应用");
+        notify(UiText.get(R.string.sandbox_started, allowed));
       } catch (Throwable e) {
         shutdown();
-        notify("沙箱启动失败：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+        notify(UiText.get(R.string.sandbox_start_failed) + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
         main.post(() -> { if (generation.get() == token) stopSelf(); });
       }
   }

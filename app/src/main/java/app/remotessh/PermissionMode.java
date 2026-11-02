@@ -12,6 +12,17 @@ public enum PermissionMode {
   PermissionMode(String label, String approval, String sandbox, String sandboxType) {
     this.label = label; this.approval = approval; this.sandbox = sandbox; this.sandboxType = sandboxType;
   }
+  /** Localized display only; protocol fields and the legacy Chinese label remain unchanged. */
+  public String label(java.util.Locale locale) {
+    if (locale == null || !"en".equals(locale.getLanguage())) return label;
+    switch (this) {
+      case INHERIT: return "Use remote permissions";
+      case DEFAULT: return "Approve as needed";
+      case READ_ONLY: return "Read only";
+      case FULL: return "Full access";
+      default: return label;
+    }
+  }
   public JSONObject startParams() {
     return this == INHERIT ? new JSONObject() : Json.obj("approvalPolicy", approval, "sandbox", sandbox);
   }

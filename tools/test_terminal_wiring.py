@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def main() -> None:
     browser = (SRC / "RemoteBrowser.java").read_text()
-    labels = '"SFTP", "SSH 终端", "独立工作区"'
+    labels = '"SFTP", UiText.get(R.string.work_text_116), UiText.get(R.string.work_text_117)'
     assert labels in browser, "SSH terminal entry sits directly below SFTP in the project menu"
     assert "if(which==1)SshTerminalActivity.open(activity,dark);" in browser, "second row opens the terminal"
     assert browser.index('actions.sftp(current)') < browser.index('SshTerminalActivity.open'), \
@@ -29,13 +29,13 @@ def main() -> None:
     for layout in (ROOT / "app/src/main/res/layout").glob("*.xml"):
         assert "复制终端文字" not in layout.read_text()
     page = (ROOT / "app/src/main/assets/terminal/terminal.js").read_text()
-    assert "输入 ssh user@host 连接" in page, "local banner explains manual connection"
+    assert "输入 ssh user@host 连接" in (SRC / "TerminalText.java").read_text(), "local banner explains manual connection"
     assert "showSoftInput(terminal.view" in terminal and "terminal.view.requestFocus()" in terminal
     # Credentials are sealed, and typed-command login uses them by host key.
     assert "CryptoBox.writeSealed" in (SRC / "SshCredentials.java").read_text(), \
         "saved passwords must be sealed with CryptoBox"
     assert "SshCredentials.load(this, command)" in terminal, "typed ssh command matches saved credentials"
-    assert "保存凭证" in terminal, "password dialog offers to save the credential"
+    assert "R.string.term_save_credential" in terminal, "password dialog offers to save the credential"
     # Host keys reuse the encrypted vault pins, same policy as SFTP.
     assert "jsch.setHostKeyRepository(hostKeyRepository(token))" in terminal
     assert "vault.getPin(" in terminal and "vault.rememberPin(" in terminal, \
@@ -60,15 +60,15 @@ def main() -> None:
     assert "keyboard" in line and "screenSize" in line, "rotation must keep the session alive"
 
     assert "disconnectButton" not in terminal
-    assert 'ui.icon("back", "主机菜单", this::showHostMenu)' in terminal
+    assert 'ui.icon("back", getString(R.string.term_hosts), this::showHostMenu)' in terminal
     menu = terminal.split("private void showHostMenu()")[1].split("private void print")[0]
     assert 'HostHistory.merge(HostHistory.list(this), SshCredentials.list(this))' in menu and 'CenteredMenu.show(this, ui.fg, ui.muted, null, labels' in menu
-    assert 'labels[hosts.size()] = "退出"' in menu and 'which == hosts.size()' in menu
+    assert 'labels[hosts.size()] = getString(R.string.term_exit)' in menu and 'which == hosts.size()' in menu
     assert 'hosts.get(i).equals(currentHost) ? " ✓"' in menu
     assert 'connected && currentHost != null && !hosts.contains(currentHost)' in menu
     assert 'connected && target.equals(currentHost)' in menu
     assert menu.index('SshCredentials.load(this, command)') < menu.index('disconnectAll()') < menu.index('startConnect(command, saved.password, false)')
-    assert '[已切换到 ' in menu and 'if (saved == null) promptPassword(command)' in menu
+    assert 'text("switched", target)' in menu and 'if (saved == null) promptPassword(command)' in menu
     login = terminal.split('open.connect(20000);')[1].split('InputStream in;')[0]
     assert login.index('token != generation || destroyed') < login.index('HostHistory.record(this, command.credentialKey())') < login.index('if (remember)')
     forget = terminal.split('private void forgetCredential(')[1].split('private void promptPassword')[0]
@@ -76,9 +76,9 @@ def main() -> None:
     assert 'HostHistory.remove(this, parsed.credentialKey())' in forget
     confirm = terminal.split("private void confirmExit()")[1].split("private void showHostMenu")[0]
     assert 'if (!connected) { finish(); return; }' in confirm
-    assert '.setMessage("断开 SSH 连接并退出？")' in confirm
-    assert '.setNegativeButton("取消", null)' in confirm
-    assert '.setPositiveButton("确认", (dialog, which) -> finish())' in confirm
+    assert '.setMessage(getString(R.string.term_exit_confirm))' in confirm
+    assert '.setNegativeButton(getString(R.string.term_cancel), null)' in confirm
+    assert '.setPositiveButton(getString(R.string.term_confirm), (dialog, which) -> finish())' in confirm
     assert 'ownedDialog = new AlertDialog.Builder(this)' in confirm
     back = terminal.split("@Override public void onBackPressed()")[1]
     assert "MainActivity.class" in back and "FLAG_ACTIVITY_REORDER_TO_FRONT" in back

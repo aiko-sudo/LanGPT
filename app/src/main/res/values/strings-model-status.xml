@@ -1,0 +1,6 @@
+<resources>
+<string name="model_catalog_loading">正在刷新模型…</string>
+<string name="model_catalog_empty">远端未返回可选模型，可使用远端默认</string>
+<string name="model_catalog_synced">已同步远端模型</string>
+<string name="model_catalog_error">刷新失败，保留上次列表：</string>
+</resources>

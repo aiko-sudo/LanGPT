@@ -48,18 +48,18 @@ final class RemoteBrowser {
     this.ui = new RemoteScreens(activity, dark);
     this.actions = actions;
     LinearLayout root = ui.column();
-    root.setContentDescription("项目管理项目列表");
+    root.setContentDescription(UiText.get(R.string.work_text_110));
     dialog = ui.window(root);
     LinearLayout header = ui.row();
     header.setPadding(ui.dp(12), ui.dp(4), ui.dp(12), ui.dp(4));
-    heading = ui.text("项目管理", 21);
+    heading = ui.text(UiText.get(R.string.work_text_111), 21);
     heading.setTypeface(null, android.graphics.Typeface.BOLD);
     heading.setGravity(Gravity.CENTER_VERTICAL);
     heading.setIncludeFontPadding(false);
     heading.setMaxLines(1);
     heading.setEllipsize(TextUtils.TruncateAt.END);
     header.addView(heading, new LinearLayout.LayoutParams(0, ui.dp(56), 1));
-    IconView menu=ui.icon("more", "项目管理菜单", () ->
+    IconView menu=ui.icon("more", UiText.get(R.string.work_text_112), () ->
         CenteredMenu.show(activity,ui.fg,menuLabels(),which -> {
           String current=project.isEmpty()?app.currentProject():project;
           if(which==0)actions.sftp(current);
@@ -94,21 +94,21 @@ final class RemoteBrowser {
     search.setTextSize(16);
     search.setTextColor(ui.fg);
     search.setHintTextColor(ui.muted);
-    search.setHint("搜索项目和对话");
-    search.setContentDescription("搜索项目和对话");
+    search.setHint(UiText.get(R.string.work_text_113));
+    search.setContentDescription(UiText.get(R.string.work_text_113));
     search.setSingleLine(true);
     search.setPadding(ui.dp(18), ui.dp(12), ui.dp(18), ui.dp(12));
     search.setBackground(ui.rounded(ui.panel));
     footer.addView(search, new LinearLayout.LayoutParams(0, ui.dp(54), 1));
     primary =
         ui.button(
-            "新项目",
+            UiText.get(R.string.work_text_114),
             true,
             () -> {
               if (project.isEmpty()) actions.directories();
               else {
                 if (!app.canSwitchConversation()) {
-                  Toast.makeText(activity, "正在恢复会话或上传附件，请稍候", Toast.LENGTH_SHORT).show();
+                  Toast.makeText(activity, UiText.get(R.string.work_text_115), Toast.LENGTH_SHORT).show();
                   return;
                 }
                 if (app.useProject(project)) {
@@ -133,12 +133,12 @@ final class RemoteBrowser {
         });
   }
 
-  String[] menuLabels() { return new String[] {"SFTP", "SSH 终端", "独立工作区"}; }
+  String[] menuLabels() { return new String[] {"SFTP", UiText.get(R.string.work_text_116), UiText.get(R.string.work_text_117)}; }
 
   private void refreshByPull() {
     if (!app.connected) {
       scroll.finishRefresh();
-      Toast.makeText(ui.activity, "请先连接主机", Toast.LENGTH_SHORT).show();
+      Toast.makeText(ui.activity, UiText.get(R.string.work_text_118), Toast.LENGTH_SHORT).show();
       return;
     }
     app.refreshThreads(false, () -> {
@@ -180,10 +180,10 @@ final class RemoteBrowser {
     String signature = signature();
     if (signature.equals(renderedSignature)) return;
     renderedSignature = signature;
-    heading.setText(project.isEmpty() ? "项目管理" : RemoteDirectory.name(project));
+    heading.setText(project.isEmpty() ? UiText.get(R.string.work_text_111) : RemoteDirectory.name(project));
     heading.setMaxLines(1);
     heading.setEllipsize(TextUtils.TruncateAt.END);
-    primary.setText(project.isEmpty() ? "新项目" : "聊天");
+    primary.setText(project.isEmpty() ? UiText.get(R.string.work_text_114) : UiText.get(R.string.work_text_119));
     hosts.removeAllViews();
     for (Profile p : new java.util.ArrayList<Profile>()) {
       boolean active = app.connected && app.profile != null && p.id.equals(app.profile.id);
@@ -244,14 +244,29 @@ final class RemoteBrowser {
 
   private void section(String title) {
     TextView label = ui.text(title, 21);
-    label.setPadding(0, ui.dp(12), 0, ui.dp(16));
+    label.setPadding(0, ui.dp(12), 0, ui.dp(4));
     list.addView(label);
+    // 左对齐渐隐分隔线（50% 屏宽）：实→透明，与菜单分隔线同风格。
+    View line = new View(ui.activity);
+    int base = ui.muted == 0 ? 0xff8e8e93 : ui.muted;
+    int[] stops = new int[11];
+    for (int i = 0; i <= 10; i++) {
+      float alpha = 1f - i / 10f;
+      stops[i] = (base & 0x00ffffff) | ((int) (0x55 * alpha) << 24);
+    }
+    line.setBackground(new android.graphics.drawable.GradientDrawable(
+        android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT, stops));
+    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+        Math.round(ui.activity.getResources().getDisplayMetrics().widthPixels * 0.5f),
+        Math.max(1, ui.dp(1)));
+    lp.bottomMargin = ui.dp(12);
+    list.addView(line, lp);
   }
 
   private void refreshList() {
     list.removeAllViews();
     if (project.isEmpty()) {
-      section("项目");
+      section(UiText.get(R.string.work_text_120));
       int count = 0;
       for (Profile p : app.vault.profiles) {
         if (!filter.equals(p.id)) continue;
@@ -277,24 +292,24 @@ final class RemoteBrowser {
                   openProject(path);
                 } else {
                   actions.connect(p);
-                  Toast.makeText(ui.activity, "连接此电脑后再打开项目", Toast.LENGTH_SHORT).show();
+                  Toast.makeText(ui.activity, UiText.get(R.string.work_text_121), Toast.LENGTH_SHORT).show();
                 }
               });
           // 左滑露出「移除」: 仅本地隐藏, 不删远端文件, cwd 不可移
           SwipeActionLayout swipe = new SwipeActionLayout(
-              ui.activity, row, ui.dp(72), "移除", ui.bg, () -> {
+              ui.activity, row, ui.dp(72), UiText.get(R.string.work_text_122), ui.bg, () -> {
                 if (p.cwd.equals(path) || !p.projects.contains(path)) {
-                  Toast.makeText(ui.activity, "默认项目不可移除", Toast.LENGTH_SHORT).show();
+                  Toast.makeText(ui.activity, UiText.get(R.string.work_text_123), Toast.LENGTH_SHORT).show();
                   return;
                 }
                 new AlertDialog.Builder(ui.activity)
-                    .setTitle("从历史中移除")
-                    .setMessage("仅从 App 历史列表隐藏此项，不会删除远端项目文件。")
-                    .setNegativeButton("取消", null)
-                    .setPositiveButton("移除", (d, w) -> {
+                    .setTitle(UiText.get(R.string.work_text_124))
+                    .setMessage(UiText.get(R.string.work_text_125))
+                    .setNegativeButton(UiText.get(R.string.work_text_004), null)
+                    .setPositiveButton(UiText.get(R.string.work_text_122), (d, w) -> {
                       p.projects.remove(path);
                       try { app.vault.save(); } catch (Exception e) { /* 本地存储失败不阻塞 UI */ }
-                      Toast.makeText(ui.activity, "已从历史移除", Toast.LENGTH_SHORT).show();
+                      Toast.makeText(ui.activity, UiText.get(R.string.work_text_126), Toast.LENGTH_SHORT).show();
                       refresh();
                     })
                     .show();
@@ -302,16 +317,16 @@ final class RemoteBrowser {
           list.addView(swipe, new LinearLayout.LayoutParams(-1, ui.dp(54)));
         }
         if (paths.isEmpty())
-          list.addView(ui.button("连接", false, () -> actions.connect(p)));
+          list.addView(ui.button(UiText.get(R.string.work_text_127), false, () -> actions.connect(p)));
       }
       if (count == 0) {
-        TextView note = ui.text("选择远端文件夹，或新建一个项目。", 13);
+        TextView note = ui.text(UiText.get(R.string.work_text_128), 13);
         note.setTextColor(ui.muted);
         note.setPadding(0, 0, 0, ui.dp(12));
         list.addView(note);
-        list.addView(ui.button("选择路径 / 新建项目", false, actions::directories));
+        list.addView(ui.button(UiText.get(R.string.work_text_129), false, actions::directories));
       }
-      section("最近");
+      section(UiText.get(R.string.work_text_130));
     }
     int count = 0;
     if (app.connected && filter.equals(app.profile.id))
@@ -320,11 +335,11 @@ final class RemoteBrowser {
         if (thread == null) continue;
         if (!project.isEmpty() && !thread.optString("cwd").equals(project)) continue;
         String name = thread.isNull("name") ? "" : thread.optString("name");
-        if (name.trim().isEmpty()) name = thread.optString("preview", "新对话");
+        if (name.trim().isEmpty()) name = thread.optString("preview", UiText.get(R.string.work_text_131));
         if (!matches(name)) continue;
         count++;
         LinearLayout row = ui.row();
-        TextView text = ui.text("[" + app.profile.runtime + "] " + (name.isEmpty() ? "新对话" : name), 15);
+        TextView text = ui.text("[" + app.profile.runtime + "] " + (name.isEmpty() ? UiText.get(R.string.work_text_131) : name), 15);
         text.setMaxLines(1);
         text.setEllipsize(TextUtils.TruncateAt.END);
         text.setPadding(0, ui.dp(12), ui.dp(12), ui.dp(12));
@@ -336,17 +351,17 @@ final class RemoteBrowser {
                     - thread.optLong("updatedAt", System.currentTimeMillis() / 1000));
         TextView time =
             ui.text(
-                age < 3600 ? "刚刚" : age < 86400 ? (age / 3600) + "小时" : (age / 86400) + "天", 11);
-        String state = app.threadRunning(thread) ? "运行中" : "未知";
+                age < 3600 ? UiText.get(R.string.work_text_132) : age < 86400 ? (age / 3600) + UiText.get(R.string.work_text_133) : (age / 86400) + UiText.get(R.string.work_text_134), 11);
+        String state = app.threadRunning(thread) ? UiText.get(R.string.work_text_076) : UiText.get(R.string.work_text_135);
         JSONObject reported = thread.optJSONObject("status");
-        if (reported != null && "idle".equals(reported.optString("type"))) state = "空闲";
-        if (thread.optString("id").equals(app.threadId) && !app.approvals.isEmpty()) state = "待审批";
+        if (reported != null && "idle".equals(reported.optString("type"))) state = UiText.get(R.string.work_text_136);
+        if (thread.optString("id").equals(app.threadId) && !app.approvals.isEmpty()) state = UiText.get(R.string.work_text_094);
         time.setText(state + " · " + time.getText());
         time.setTextColor(ui.muted);
         if (app.threadRunning(thread)) {
           ProgressBar running = new ProgressBar(ui.activity);
           running.setIndeterminate(true);
-          running.setContentDescription("对话正在运行");
+          running.setContentDescription(UiText.get(R.string.work_text_137));
           LinearLayout.LayoutParams progress = new LinearLayout.LayoutParams(ui.dp(20), ui.dp(20));
           progress.setMargins(0, 0, ui.dp(10), 0);
           row.addView(running, progress);
@@ -358,7 +373,7 @@ final class RemoteBrowser {
             () -> {
               if (!app.canSwitchConversation()) {
                 app.openConversation(id);
-                Toast.makeText(ui.activity, "正在恢复会话，完成后自动打开", Toast.LENGTH_SHORT).show();
+                Toast.makeText(ui.activity, UiText.get(R.string.work_text_138), Toast.LENGTH_SHORT).show();
                 dialog.dismiss();
                 return;
               }
@@ -366,22 +381,22 @@ final class RemoteBrowser {
               dialog.dismiss();
             });
         SwipeActionLayout swipe = new SwipeActionLayout(
-            ui.activity, row, ui.dp(72), "删除", ui.bg, () -> {
+            ui.activity, row, ui.dp(72), UiText.get(R.string.work_text_106), ui.bg, () -> {
               if (app.threadRunning(thread)) {
-                Toast.makeText(ui.activity, "对话正在运行，结束后才能删除", Toast.LENGTH_SHORT).show();
+                Toast.makeText(ui.activity, UiText.get(R.string.work_text_139), Toast.LENGTH_SHORT).show();
                 return;
               }
               new AlertDialog.Builder(ui.activity)
-                  .setTitle("删除历史对话？")
-                  .setMessage("将永久删除该远端 Codex 对话及其消息，无法恢复。")
-                  .setNegativeButton("取消", null)
-                  .setPositiveButton("删除", (d, w) -> {
+                  .setTitle(UiText.get(R.string.work_text_140))
+                  .setMessage(UiText.get(R.string.work_text_141))
+                  .setNegativeButton(UiText.get(R.string.work_text_004), null)
+                  .setPositiveButton(UiText.get(R.string.work_text_106), (d, w) -> {
                     app.deleteThread(id, failure -> {
                       if (failure == null) {
-                        Toast.makeText(ui.activity, "历史对话已删除", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(ui.activity, UiText.get(R.string.work_text_142), Toast.LENGTH_SHORT).show();
                         refresh();
                       } else {
-                        Toast.makeText(ui.activity, "删除失败：" + failure.getMessage(), Toast.LENGTH_LONG).show();
+                        Toast.makeText(ui.activity, UiText.get(R.string.work_text_108) + failure.getMessage(), Toast.LENGTH_LONG).show();
                       }
                     });
                   })
@@ -390,15 +405,15 @@ final class RemoteBrowser {
         list.addView(swipe, new LinearLayout.LayoutParams(-1, ui.dp(68)));
       }
     if (count == 0) {
-      TextView note = ui.text(project.isEmpty() ? "暂无对话" : "没有更多线程", 16);
+      TextView note = ui.text(project.isEmpty() ? UiText.get(R.string.work_text_143) : UiText.get(R.string.work_text_144), 16);
       note.setTextColor(ui.muted);
       note.setGravity(Gravity.CENTER);
       note.setPadding(0, ui.dp(24), 0, ui.dp(24));
       list.addView(note);
     }
     if (app.connected && !app.nextCursor.isEmpty())
-      list.addView(ui.button("加载更多", false, () -> app.refreshThreads(true)));
+      list.addView(ui.button(UiText.get(R.string.work_text_145), false, () -> app.refreshThreads(true)));
     if (!app.connected && app.vault.profiles.isEmpty())
-      list.addView(ui.button("添加 SSH 连接", true, actions::add));
+      list.addView(ui.button(UiText.get(R.string.work_text_146), true, actions::add));
   }
 }

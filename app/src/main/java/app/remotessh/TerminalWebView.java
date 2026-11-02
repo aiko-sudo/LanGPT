@@ -80,6 +80,7 @@ final class TerminalWebView {
       owner.runOnUiThread(() -> {
         if (closed || !(ORIGIN + "index.html").equals(view.getUrl())) return;
         ready = true;
+        status(TerminalText.text(AppLanguage.locale(owner), "banner"));
         status(startup.toString());
         startup.setLength(0);
       });

@@ -31,7 +31,7 @@ final class SftpDownloadDialog {
     intent.setType(mime == null ? "application/octet-stream" : mime);
     intent.putExtra(Intent.EXTRA_TITLE, fileName);
     try { activity.startActivityForResult(intent, 46); }
-    catch (Exception e) { Toast.makeText(activity, "无法打开保存位置选择", Toast.LENGTH_SHORT).show(); }
+    catch (Exception e) { Toast.makeText(activity, activity.getString(R.string.media_pick_failed), Toast.LENGTH_SHORT).show(); }
   }
 
   static void start(Activity activity, RemoteApp app, String path, String name, long size, Uri target) {
@@ -45,7 +45,7 @@ final class SftpDownloadDialog {
     TextView title = new TextView(activity);
     title.setText(fileName);
     TextView stats = new TextView(activity);
-    stats.setText("准备下载…");
+    stats.setText(activity.getString(R.string.media_download_prepare));
     ProgressBar bar = new ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
     if (size > 0) { bar.setMax((int) Math.min(size, Integer.MAX_VALUE)); bar.setProgress(0); }
     else bar.setIndeterminate(true);
@@ -57,7 +57,7 @@ final class SftpDownloadDialog {
     final java.util.concurrent.atomic.AtomicLong bytes = new java.util.concurrent.atomic.AtomicLong();
     AlertDialog dialog = new AlertDialog.Builder(activity)
         .setView(box)
-        .setNegativeButton("取消", (d, w) -> cancelled.set(true))
+        .setNegativeButton(activity.getString(R.string.media_cancel), (d, w) -> cancelled.set(true))
         .setCancelable(false)
         .show();
 
@@ -98,41 +98,41 @@ final class SftpDownloadDialog {
           app.readMedia(path, counting, size > 0 ? size : FALLBACK_LIMIT, () -> !cancelled.get());
           counting.flush();
         }
-        if (cancelled.get()) throw new java.io.IOException("下载已取消");
+        if (cancelled.get()) throw new java.io.IOException(activity.getString(R.string.media_download_cancelled));
         backup = java.io.File.createTempFile("sftp-backup-", ".part", activity.getCacheDir());
         try (java.io.InputStream original = activity.getContentResolver().openInputStream(target);
              OutputStream saved = new java.io.FileOutputStream(backup)) {
-          if (original == null) throw new java.io.IOException("无法备份目标文件，已停止以保护原文件");
+          if (original == null) throw new java.io.IOException(activity.getString(R.string.media_backup_failed));
           byte[] block = new byte[16384]; int n;
           while ((n = original.read(block)) != -1) saved.write(block, 0, n);
         }
-        if (cancelled.get()) throw new java.io.IOException("下载已取消");
+        if (cancelled.get()) throw new java.io.IOException(activity.getString(R.string.media_download_cancelled));
         writing = true;
         try (OutputStream destination = activity.getContentResolver().openOutputStream(target, "wt");
              java.io.InputStream source = new java.io.FileInputStream(staged)) {
-          if (destination == null) throw new java.io.IOException("无法写入所选位置");
+          if (destination == null) throw new java.io.IOException(activity.getString(R.string.media_write_failed));
           byte[] block = new byte[16384]; int n;
-          while ((n = source.read(block)) != -1) { if (cancelled.get()) throw new java.io.IOException("下载已取消"); destination.write(block, 0, n); }
+          while ((n = source.read(block)) != -1) { if (cancelled.get()) throw new java.io.IOException(activity.getString(R.string.media_download_cancelled)); destination.write(block, 0, n); }
         }
         main.post(() -> {
           main.removeCallbacks(ticker[0]);
           dialog.dismiss();
-          Toast.makeText(activity, "已保存：" + fileName, Toast.LENGTH_LONG).show();
+          Toast.makeText(activity, activity.getString(R.string.media_saved, fileName), Toast.LENGTH_LONG).show();
         });
       } catch (Exception e) {
         String detail = e.getMessage();
         if (writing && backup != null) {
           try (OutputStream destination = activity.getContentResolver().openOutputStream(target, "wt");
                java.io.InputStream source = new java.io.FileInputStream(backup)) {
-            if (destination == null) throw new java.io.IOException("无法恢复");
+            if (destination == null) throw new java.io.IOException(activity.getString(R.string.media_restore_failed_short));
             byte[] block = new byte[16384]; int n; while ((n = source.read(block)) != -1) destination.write(block, 0, n);
-          } catch (Exception restore) { detail = "写入失败且自动恢复失败，请检查目标文件；备份保留于应用缓存"; backup = null; }
+          } catch (Exception restore) { detail = activity.getString(R.string.media_restore_failed); backup = null; }
         }
         final String message = detail;
         main.post(() -> {
           main.removeCallbacks(ticker[0]);
           dialog.dismiss();
-          Toast.makeText(activity, cancelled.get() ? "已取消下载" : "下载失败：" + message, Toast.LENGTH_LONG).show();
+          Toast.makeText(activity, cancelled.get() ? activity.getString(R.string.media_cancelled) : activity.getString(R.string.media_download_failed, message), Toast.LENGTH_LONG).show();
         });
       } finally { if (staged != null) staged.delete(); if (backup != null) backup.delete(); }
     });

@@ -38,7 +38,7 @@ final class TsnetSetup {
     } catch (Exception | LinkageError ignored) { /* Status UI exposes failures; direct SSH remains available. */ } });
   }
   static void show(Activity a) {
-    Toast.makeText(a, "正在检查内置 Tailscale…", Toast.LENGTH_SHORT).show();
+    Toast.makeText(a, UiText.get(R.string.network_text_029), Toast.LENGTH_SHORT).show();
     worker.execute(() -> {
       try {
         Tailscale.setInterfaceSource(new app.remotessh.tsnet.AndroidInterfaceSource());
@@ -52,37 +52,37 @@ final class TsnetSetup {
         final JSONObject s = state;
         main.post(() -> display(a, s));
       } catch (Exception | LinkageError e) {
-        main.post(() -> { if (!a.isFinishing()) new AlertDialog.Builder(a).setMessage("内置 Tailscale 启动失败：" + e.getClass().getSimpleName()).setPositiveButton("确定", null).show(); });
+        main.post(() -> { if (!a.isFinishing()) new AlertDialog.Builder(a).setMessage(UiText.get(R.string.network_text_030) + e.getClass().getSimpleName()).setPositiveButton(UiText.get(R.string.network_text_031), null).show(); });
       }
     });
   }
   private static void display(Activity a, JSONObject state) {
     if (a.isFinishing() || a.isDestroyed()) return;
     Context app = a.getApplicationContext();
-    String backend = state.optString("backend", "启动中");
+    String backend = state.optString("backend", UiText.get(R.string.network_text_032));
     String url = state.optString("authURL", "");
     String ips = state.optJSONArray("ips") == null ? "" : state.optJSONArray("ips").toString();
     boolean online = state.optBoolean("running") && !ips.equals("[]") && !ips.isEmpty();
     String sandboxLine = TsnetVpnService.running()
-        ? "\n沙箱：已启用，白名单应用共用此节点"
-        : "\n已授权应用：仅 LanGPT 自身";
+        ? UiText.get(R.string.network_text_033)
+        : UiText.get(R.string.network_text_034);
     String server = controlUrl(app);
-    String serverLine = "\n服务器：" + (server.isEmpty() ? "官方 login.tailscale.com" : server);
+    String serverLine = UiText.get(R.string.network_text_035) + (server.isEmpty() ? UiText.get(R.string.network_text_036) : server);
     // 连接路径：直连（快）还是中继（慢，几十到几百 KB/s）。
     StringBuilder pathLine = new StringBuilder();
     org.json.JSONArray paths = state.optJSONArray("paths");
     if (paths != null) for (int i = 0; i < paths.length(); i++) {
-      if (i == 0) pathLine.append("\n连接：");
-      pathLine.append(i == 0 ? "" : "；").append(paths.optString(i));
+      if (i == 0) pathLine.append(UiText.get(R.string.network_text_037));
+      pathLine.append(i == 0 ? "" : UiText.get(R.string.network_text_038)).append(paths.optString(i));
     }
     // 网络节点生效状态：沙箱内公网访问依赖它。
     String exit = state.optString("exit", "");
-    String exitLine = exit.isEmpty() ? "\n出口：未使用" : "\n出口：" + exit;
+    String exitLine = exit.isEmpty() ? UiText.get(R.string.network_text_039) : UiText.get(R.string.network_text_040) + exit;
 
-    AlertDialog.Builder b = new AlertDialog.Builder(a).setTitle("内置 Tailscale")
-      .setMessage("状态：" + backend + (ips.equals("[]") || ips.isEmpty() ? "" : "\n地址：" + ips) + serverLine + pathLine + exitLine + sandboxLine)
-      .setNegativeButton("关闭", null)
-      .setNeutralButton("刷新状态", (d,w) -> show(a));
+    AlertDialog.Builder b = new AlertDialog.Builder(a).setTitle(UiText.get(R.string.network_text_041))
+      .setMessage(UiText.get(R.string.network_text_042) + backend + (ips.equals("[]") || ips.isEmpty() ? "" : UiText.get(R.string.network_text_043) + ips) + serverLine + pathLine + exitLine + sandboxLine)
+      .setNegativeButton(UiText.get(R.string.network_text_044), null)
+      .setNeutralButton(UiText.get(R.string.network_text_045), (d,w) -> show(a));
 
     if (!online) {
       // 未授权：控制服务器地址可编辑（他人部署/自建 headscale 时自定义）。
@@ -92,35 +92,35 @@ final class TsnetSetup {
       int pad = density * 20;
       box.setPadding(pad, pad / 2, pad, 0);
       TextView label = new TextView(a);
-      label.setText("控制服务器（默认官方，自建可改）：");
+      label.setText(UiText.get(R.string.network_text_046));
       final EditText input = new EditText(a);
       input.setText(server.isEmpty() ? "https://controlplane.tailscale.com" : server);
       input.setSelection(input.getText().length());
       box.addView(label); box.addView(input);
       b.setView(box);
-      b.setPositiveButton("保存并重启节点", (d, w) -> {
+      b.setPositiveButton(UiText.get(R.string.network_text_047), (d, w) -> {
         String value = input.getText().toString().trim();
         if (!value.isEmpty() && !value.startsWith("https://") && !value.startsWith("http://"))
           value = "https://" + value;
         String finalValue = value.equals("https://controlplane.tailscale.com") ? "" : value;
         app.getSharedPreferences("tsnet_setup", 0).edit().putString("control_url", finalValue).apply();
         worker.execute(() -> { try { Tailscale.stop(); } catch (Exception | LinkageError ignored) { } });
-        Toast.makeText(a, finalValue.isEmpty() ? "已恢复官方服务器，节点重启中" : "已设置：" + finalValue, Toast.LENGTH_LONG).show();
+        Toast.makeText(a, finalValue.isEmpty() ? UiText.get(R.string.network_text_048) : UiText.get(R.string.network_text_049) + finalValue, Toast.LENGTH_LONG).show();
         main.postDelayed(() -> show(a), 800);
       });
     } else if (!url.isEmpty()) {
       Uri uri = Uri.parse(url);
       if ("https".equalsIgnoreCase(uri.getScheme()) && uri.getHost() != null)
-        b.setPositiveButton("浏览器授权", (d,w) -> {
+        b.setPositiveButton(UiText.get(R.string.network_text_050), (d,w) -> {
           try { a.startActivity(new Intent(Intent.ACTION_VIEW, uri)); }
-          catch (Exception ex) { Toast.makeText(a, "无法打开授权页面", Toast.LENGTH_LONG).show(); }
+          catch (Exception ex) { Toast.makeText(a, UiText.get(R.string.network_text_051), Toast.LENGTH_LONG).show(); }
         });
     } else {
       // 已登录运行的节点提供显式停用：关闭节点并取消开机自启。
-      b.setPositiveButton("停用", (d,w) -> {
+      b.setPositiveButton(UiText.get(R.string.network_text_052), (d,w) -> {
         app.getSharedPreferences("tsnet_setup", 0).edit().putBoolean("enabled", false).apply();
         worker.execute(() -> { try { Tailscale.stop(); } catch (Exception | LinkageError ignored) { } });
-        Toast.makeText(a, "内置 Tailscale 已停用，下次启动不再自动运行", Toast.LENGTH_SHORT).show();
+        Toast.makeText(a, UiText.get(R.string.network_text_053), Toast.LENGTH_SHORT).show();
       });
     }
     b.show();

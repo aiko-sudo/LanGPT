@@ -1,0 +1,19 @@
+<resources>
+    <string name="app_name">LanGPT</string>
+    <string name="ui_background_settings">Background settings</string>
+    <string name="ui_battery_unrestricted">Unrestricted battery</string>
+    <string name="ui_notifications_and_live_activities">Notifications &amp; Live Activities</string>
+    <string name="ui_interface_language">Interface language</string>
+    <string name="ui_language_follow_system">Follow system</string>
+    <string name="ui_appearance">Appearance</string>
+    <string name="ui_font_size">Text size</string>
+    <string name="ui_add_connection">Add connection</string>
+    <string name="ui_current_connection">Current connection</string>
+    <string name="ui_app_sandbox">App sandbox</string>
+    <string name="ui_follow_system">Follow system</string>
+    <string name="ui_smaller">Smaller</string>
+    <string name="ui_small">Small</string>
+    <string name="ui_standard">Standard</string>
+    <string name="ui_large">Large</string>
+    <string name="ui_larger">Larger</string>
+</resources>

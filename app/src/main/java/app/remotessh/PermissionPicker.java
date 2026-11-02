@@ -59,28 +59,30 @@ final class PermissionPicker {
     PermissionMode selectedAtOpen = app.permissionMode;
     LinearLayout choices = ui.column();
     choices.setPadding(ui.dp(12), 0, ui.dp(12), ui.dp(4));
+    java.util.Locale displayLocale = java.util.Locale.forLanguageTag(activity.getString(R.string.permission_language));
     for (PermissionMode mode : PermissionMode.values()) {
       boolean selected = mode == app.permissionMode && !app.forcedApprovals.active();
+      String label = mode.label(displayLocale);
       LinearLayout option = option(choices, icon(mode), color(mode),
-          mode == PermissionMode.INHERIT ? "沿用当前对话" : mode.label, ui.fg, selected);
-      option.setContentDescription("权限选项：" + mode.label);
+          mode == PermissionMode.INHERIT ? activity.getString(R.string.permission_inherit_conversation) : label, ui.fg, selected);
+      option.setContentDescription(activity.getString(R.string.permission_option_description, label));
       ui.clickable(option, () -> {
         if (app.profile == profile && app.threadId.equals(thread) && generation == app.connectionGeneration()) app.choosePermission(mode);
         dismiss();
       });
     }
     if (forcedAtOpen) {
-      LinearLayout force = option(choices, "bolt", red(), "强制允许", red(), true);
-      force.setContentDescription("权限选项：强制允许");
+      LinearLayout force = option(choices, "bolt", red(), activity.getString(R.string.permission_force_allow), red(), true);
+      force.setContentDescription(activity.getString(R.string.permission_option_description, activity.getString(R.string.permission_force_allow)));
       ui.clickable(force, () -> {
         if (app.profile == profile && app.threadId.equals(thread) && generation == app.connectionGeneration()) app.forcedApprovals.disable();
         dismiss();
       });
     }
-    TextView note = ui.text("发送消息以更新权限", 12, ui.muted);
+    TextView note = ui.text(activity.getString(R.string.permission_update_hint), 12, ui.muted);
     note.setPadding(ui.dp(16), ui.dp(12), ui.dp(8), 0);
     choices.addView(note);
-    dialog = ui.sheet("权限", choices, wide);
+    dialog = ui.sheet(activity.getString(R.string.permission_title), choices, wide);
     Runnable ownedListener = () -> {
       if (app.profile != profile || !app.threadId.equals(thread) || generation != app.connectionGeneration()
           || forcedAtOpen != app.forcedApprovals.active() || selectedAtOpen != app.permissionMode) dismiss();
@@ -112,12 +114,12 @@ final class PermissionPicker {
     Profile profile = app.profile;
     int generation = app.connectionGeneration();
     String thread = Json.object(request, "params").optString("threadId", app.threadId);
-    warning = new AlertDialog.Builder(activity).setTitle("全部允许(强制)").setMessage(WARNING)
-        .setNegativeButton("取消", null)
-        .setPositiveButton("继续", (ignored, which) -> {
+    warning = new AlertDialog.Builder(activity).setTitle(R.string.permission_force_title).setMessage(R.string.permission_force_warning)
+        .setNegativeButton(R.string.permission_cancel, null)
+        .setPositiveButton(R.string.permission_continue, (ignored, which) -> {
           if (app.profile != profile || generation != app.connectionGeneration() || !app.connected) return;
           if (!app.forcedApprovals.canOffer(request)) return;
-          if (!app.forcedApprovals.enable(thread)) ui.toast("对话正在恢复或仅查看历史，未启用强制允许");
+          if (!app.forcedApprovals.enable(thread)) ui.toast(activity.getString(R.string.permission_force_unavailable));
         }).create();
     warning.show();
     ((AlertDialog) warning).getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(red());

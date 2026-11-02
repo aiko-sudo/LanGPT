@@ -123,8 +123,20 @@ final class MediaFiles {
 
   static List<String> images(ChatItem item) {
     List<String> result = new ArrayList<>(item.images);
-    Matcher matcher = IMAGE.matcher(item.text);
+    if (!item.prose()) return result;
+    Matcher matcher = IMAGE.matcher(MarkdownImages.prose(item.text));
     while (matcher.find() && result.size() < 12) if (!result.contains(matcher.group(2))) result.add(matcher.group(2));
     return result;
+  }
+  static List<String> imageGallery(List<ChatItem> items,String cwd) {
+    Set<String> sources=new LinkedHashSet<>();
+    for(ChatItem item:items)for(String original:images(item)) {
+      if(original==null || original.isEmpty())continue;
+      String source=original;
+      try {if(!source.startsWith("data:") && !source.startsWith("https://"))source=remotePath(source,cwd);}
+      catch(IllegalArgumentException ignored) { }
+      sources.add(source);
+    }
+    return new ArrayList<>(sources);
   }
 }

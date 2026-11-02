@@ -88,7 +88,11 @@ public class PrefetchTest {
     viewer=(SRC/'SftpFileActivity.java').read_text()
     assert 'Markdown.render(loaded.value,ui.muted,ui.panel)' in viewer and 'isMarkdown(path)' in viewer
     assert 'LinkMovementMethod.getInstance()' in viewer and 'ArrowKeyMovementMethod.getInstance()' in viewer
-    assert 'String[] modes={"名称","日期","大小"}' in browser, "sort rows follow the compact menu"
+    assert 'String[] modes={UiText.get(R.string.extra_sftp_name),UiText.get(R.string.extra_sftp_date),UiText.get(R.string.extra_sftp_size)}' in browser, "sort rows follow the compact menu"
+    for lang in ('values', 'values-en'):
+        resources=(ROOT/'app/src/main/res'/lang/'strings-extra.xml').read_text()
+        for key in ('extra_sftp_name', 'extra_sftp_date', 'extra_sftp_size'):
+            assert f'name="{key}"' in resources, f'{lang} missing {key}'
     assert '(i==sortMode?"✓ ":"")' in browser, "current sort marked"
     assert 'probe.connectFiles' in app and 'probe.connect(' not in method(app,'  void prefetchSftpOnce()')
     viewer=(SRC/'SftpFileActivity.java').read_text();manifest=(ROOT/'app/src/main/AndroidManifest.xml').read_text()
