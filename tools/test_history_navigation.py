@@ -4,9 +4,36 @@ Uses explicit Android/data/request test doubles, not a device UI or real RPC tes
 from pathlib import Path
 import subprocess
 import tempfile
+import json
+import re
+import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / 'app/src/main/java/app/remotessh'
+
+def resources():
+    result = {}
+    for path in (ROOT / 'app/src/main/res/values').glob('*.xml'):
+        for item in ET.parse(path).getroot().findall('string'):
+            text = ''.join(item.itertext()).strip()
+            if text.startswith('"') and text.endswith('"'):
+                text = text[1:-1]
+            result[item.attrib['name']] = text.replace('\\u0020', ' ')
+    return result
+
+
+def assert_resource(source, name, expected):
+    assert 'R.string.' + name in source, name
+    assert expected in resources()[name], (name, expected)
+
+
+def java_text_stubs(source):
+    names = sorted(set(re.findall(r'R\.string\.(\w+)', source)))
+    values = resources()
+    fields = ' '.join('static final int %s=%d;' % (name, i) for i, name in enumerate(names))
+    cases = ' '.join('case %d: return %s;' % (i, json.dumps(values[name], ensure_ascii=True)) for i, name in enumerate(names))
+    return 'class R { static class string { ' + fields + ' }}\n' + 'class UiText { static String get(int id) { switch(id) { ' + cases + ' default: throw new AssertionError(id); } }}\n'
+
 
 def method(source, signature):
     start = source.index(signature)
@@ -83,13 +110,22 @@ public class HistoryNavigationTest {
     assert 'recoveryInProgress' not in back and 'app.attaching' not in back
     settings=method(activity,'  private void showSettings()')
     menu=method(activity,'  private void showMainMenu()')
-    assert all('"'+label+'"' in settings for label in ('外观设置','文字大小','后台设置','添加连接','当前连接'))
-    assert '"电池设为不受限"' in activity and '"Tailscale"' in activity
+    background=method(activity,'  private void backgroundSettings()')
+    for name, label in [('main_text_19','后台设置'),('main_text_16','添加连接'),('main_text_17','当前连接')]:
+        assert_resource(settings,name,label)
+    for name, label in [('main_text_21','外观设置'),('main_text_20','文字大小'),('ui_battery_unrestricted','电池设为不受限')]:
+        assert_resource(background,name,label)
+    assert 'which == 0) backgroundSettings()' in settings
+    assert 'which == 1) editProfile(new Profile(), true)' in settings
+    assert 'which == 2) editCurrentProfile()' in settings
+    assert 'which == 4) chooseTheme()' in background and 'which == 5) chooseFontSize()' in background
+    assert '"Tailscale"' in background
     assert '流体云与通知' not in activity and '收起状态只隐藏本轮流体云' not in activity
-    assert '显示任务状态与审批流体云' in activity and '打开系统通知设置' in activity
+    assert_resource(activity,'main_text_182','显示任务状态与审批流体云')
+    assert_resource(activity,'main_text_183','打开系统通知设置')
     assert '连接期间会显示常驻通知并保持' not in activity
-    assert '添加连接' not in menu and '修改当前连接' not in menu
-    print('PASS back is ungated; five settings entries and no duplicate top-level entries (source checks)')
+    assert 'showSettings();' in menu
+    print('PASS back is ungated; settings and migrated background menu actions are wired')
 
     source=(SRC/'MainActivity.java').read_text()
     assert 'boolean showActions = app.readOnly && !resuming;' in source
@@ -98,7 +134,10 @@ public class HistoryNavigationTest {
     assert 'isThreadNotLoaded' in remote and '该会话未在电脑端加载' in remote
     assert 'isRemoteMissingThread' in remote and 'getStringSet(profile.id' in remote
     assert 'startAnimation' not in source
-    assert 'action(\"接续\"' in source and 'action(\"新会话\"' in source
+    assert 'action(UiText.get(R.string.main_text_12),()->app.resume(app.threadId))' in source
+    assert 'action(UiText.get(R.string.main_text_13),this::startNewChat)' in source
+    assert_resource(source,'main_text_12','接续')
+    assert_resource(source,'main_text_13','新会话')
     assert '重连并接续' not in source
     print('PASS history page keeps resume/new-chat visible while read-only (source checks)')
 if __name__=='__main__':main()

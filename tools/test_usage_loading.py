@@ -34,6 +34,7 @@ import org.json.JSONObject;
 public class Harness {
   static void check(boolean ok, String message) { if (!ok) throw new AssertionError(message); }
   public static void main(String[] args) throws Exception {
+    UsageLimits.setLocaleProvider(() -> java.util.Locale.SIMPLIFIED_CHINESE);
     UsageLimits usage = new UsageLimits();
     usage.loading = true;
     check(usage.summary().contains("正在读取"), "loading state is explicit");
@@ -90,7 +91,8 @@ def structural() -> None:
     assert "dismiss()" in usage_info, "refresh closes the previous dialog"
     render = main.split("private void render() {")[1].split("\n")[1]
     assert "usageHeader.setText(usageHeaderText())" in render, "render() repaints the open usage menu"
-    assert '点“刷新”重试' in main, "error state offers a retry"
+    from test_history_navigation import assert_resource
+    assert_resource(main, 'main_extra_36', '点“刷新”重试')
 
     menu = (SRC / "CenteredMenu.java").read_text()
     assert "headerSink.accept(header)" in menu, "CenteredMenu exposes the header view"

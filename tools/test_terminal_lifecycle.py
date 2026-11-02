@@ -35,6 +35,7 @@ class TerminalLifecycleTest(unittest.TestCase):
 public class InputMethodManager { public int hides;
 public boolean hideSoftInputFromWindow(Object token,int flags){hides++;return true;} }''',
             'Harness.java': '''
+class R { static class string { static final int term_exit_confirm=1,term_cancel=2,term_confirm=3; } }
 class Intent {
   static final int FLAG_ACTIVITY_REORDER_TO_FRONT=0x20000;
   Class<?> target; int flags; boolean dark;
@@ -46,6 +47,7 @@ class Activity {
   static final String INPUT_METHOD_SERVICE="ime";
   Intent launched; int finishes,stops,resumes,destroys;
   android.view.inputmethod.InputMethodManager ime=new android.view.inputmethod.InputMethodManager();
+  String getString(int id){return id==1?"断开 SSH 连接并退出？":id==2?"取消":"确认";}
   void startActivity(Intent i){launched=i;} void finish(){finishes++;}
   Object getSystemService(String name){return ime;}
   protected void onStop(){stops++;} protected void onResume(){resumes++;}

@@ -36,11 +36,11 @@ final class SftpBrowser {
     TextView title=ui.text("SFTP",21);title.setTypeface(null,Typeface.BOLD);
     title.setGravity(android.view.Gravity.CENTER_VERTICAL);title.setIncludeFontPadding(false);
     header.addView(title,new LinearLayout.LayoutParams(0,ui.dp(56),1));
-    header.addView(ui.button("上一级",false,()->load(RemoteDirectory.parent(path))));
-    header.addView(ui.button("排序",false,this::showSort));
-    header.addView(ui.button("上传",false,()->openFile(path,true)));
+    header.addView(ui.button(UiText.get(R.string.extra_sftp_parent),false,()->load(RemoteDirectory.parent(path))));
+    header.addView(ui.button(UiText.get(R.string.extra_sftp_sort),false,this::showSort));
+    header.addView(ui.button(UiText.get(R.string.extra_sftp_upload),false,()->openFile(path,true)));
     root.addView(header,new LinearLayout.LayoutParams(-1,ui.dp(64)));
-    pathLabel=ui.text(path.isEmpty()?"当前连接的工作目录":path,13);
+    pathLabel=ui.text(path.isEmpty()?UiText.get(R.string.extra_sftp_workdir):path,13);
     pathLabel.setTextIsSelectable(true);pathLabel.setPadding(ui.dp(16),ui.dp(8),ui.dp(16),ui.dp(8));
     root.addView(pathLabel);
     status=ui.text("",13);status.setTextColor(ui.muted);
@@ -55,9 +55,9 @@ final class SftpBrowser {
       if (!waiting || !dialog.isShowing()) return;
       if (app.connected) {
         waiting=false;
-        if (sameProfile()) load(path); else status.setText("连接已切换，请关闭后重新打开 SFTP");
-      } else if (app.connecting) status.setText(app.state);
-      else { waiting=false;scroll.finishRefresh();status.setText(app.error.isEmpty()?"尚未连接，下拉刷新重试":app.error); }
+        if (sameProfile()) load(path); else status.setText(UiText.get(R.string.extra_sftp_switched_close));
+      } else if (app.connecting) status.setText(ConnectionDisplay.state(app.state, UiText.locale()));
+      else { waiting=false;scroll.finishRefresh();status.setText(app.error.isEmpty()?UiText.get(R.string.extra_sftp_retry_connection):app.error); }
     };
     dialog.setOnDismissListener(d->{token++;waiting=false;app.stateListeners.remove(observer);});
   }
@@ -71,7 +71,7 @@ final class SftpBrowser {
   void dismiss() { dialog.dismiss(); }
 
   private void openFile(String target,boolean upload) {
-    if(!sameProfile()){status.setText("连接已切换，请重新打开 SFTP");return;}
+    if(!sameProfile()){status.setText(UiText.get(R.string.extra_sftp_switched));return;}
     SftpFileActivity.open(ui.activity,app,target,upload,ui.bg==android.graphics.Color.BLACK,false);
   }
 
@@ -102,8 +102,8 @@ final class SftpBrowser {
     android.content.ClipboardManager clipboard=(android.content.ClipboardManager)
         ui.activity.getSystemService(android.content.Context.CLIPBOARD_SERVICE);
     if(clipboard!=null) {
-      clipboard.setPrimaryClip(android.content.ClipData.newPlainText("文件路径",full));
-      android.widget.Toast notice=android.widget.Toast.makeText(ui.activity,"路径已复制",android.widget.Toast.LENGTH_SHORT);
+      clipboard.setPrimaryClip(android.content.ClipData.newPlainText(UiText.get(R.string.extra_sftp_clip_label),full));
+      android.widget.Toast notice=android.widget.Toast.makeText(ui.activity,UiText.get(R.string.extra_sftp_copied),android.widget.Toast.LENGTH_SHORT);
       notice.setGravity(android.view.Gravity.BOTTOM|android.view.Gravity.CENTER_HORIZONTAL,0,ui.dp(64));
       notice.show();
     }
@@ -121,16 +121,16 @@ final class SftpBrowser {
 
   private void ensureConnection(boolean force) {
     if (loading) { scroll.finishRefresh(); return; }
-    if (profile==null) { scroll.finishRefresh();status.setText("请先添加连接");return; }
+    if (profile==null) { scroll.finishRefresh();status.setText(UiText.get(R.string.extra_sftp_add_connection));return; }
     if (path.isEmpty()) path=profile.cwd;
     if (!force) {
       RemoteFiles cached=app.cachedSftp(profile,path);
       if (cached!=null) { display(cached,true);return; }
     }
     if (app.connected) {
-      if (sameProfile()) load(path); else { scroll.finishRefresh();status.setText("连接已切换，请重新打开 SFTP"); }
+      if (sameProfile()) load(path); else { scroll.finishRefresh();status.setText(UiText.get(R.string.extra_sftp_switched)); }
     } else {
-      waiting=false;status.setText("正在连接当前主机…");
+      waiting=false;status.setText(UiText.get(R.string.extra_sftp_connecting));
       if (!app.connecting) app.connect(profile);
       waiting=true;
       observer.run();
@@ -140,18 +140,18 @@ final class SftpBrowser {
   private void load(String target) {
     if (loading) { scroll.finishRefresh(); return; }
     if (!app.connected) { path=target;ensureConnection(true);return; }
-    if (!sameProfile()) { scroll.finishRefresh();status.setText("连接已切换，请重新打开 SFTP");return; }
+    if (!sameProfile()) { scroll.finishRefresh();status.setText(UiText.get(R.string.extra_sftp_switched));return; }
     SshTransport transport=app.currentTransport();
-    if (transport==null) { scroll.finishRefresh();status.setText("SSH 尚未就绪，请下拉刷新");return; }
+    if (transport==null) { scroll.finishRefresh();status.setText(UiText.get(R.string.extra_sftp_ssh_not_ready));return; }
     int request=++token, generation=app.connectionGeneration();
-    loading=true; status.setText("正在读取目录…");
+    loading=true; status.setText(UiText.get(R.string.extra_sftp_reading));
     app.executeBackground(()->{
       try {
         RemoteFiles result=transport.listFiles(target);
         app.main.post(()->{
           if (request!=token || !dialog.isShowing()) return;
           loading=false;
-          if (generation!=app.connectionGeneration() || !sameProfile()) { scroll.finishRefresh();status.setText("连接已改变，请重新打开目录");return; }
+          if (generation!=app.connectionGeneration() || !sameProfile()) { scroll.finishRefresh();status.setText(UiText.get(R.string.extra_sftp_changed));return; }
           app.cacheSftp(profile,target,result);
           display(result,false);
         });
@@ -164,9 +164,9 @@ final class SftpBrowser {
           // exhausted ("no more sessions"); point the user at reconnect instead
           // of a raw protocol string.
           if(message.contains("channel is not opened")||message.contains("no more sessions"))
-            message="暂时无法打开 SSH 文件通道，请稍后下拉重试；持续失败请断开重连";
-          else if(message.isEmpty())message="请检查连接和目录权限";
-          status.setText("目录读取失败："+message);
+            message=UiText.get(R.string.extra_sftp_channel_error);
+          else if(message.isEmpty())message=UiText.get(R.string.extra_sftp_check_permissions);
+          status.setText(UiText.get(R.string.extra_sftp_read_failed, message));
         });
       }
     });
@@ -175,16 +175,16 @@ final class SftpBrowser {
   private void display(RemoteFiles result, boolean cached) {
     files=result.sorted(sortMode);path=result.path;visible=0;
     pathLabel.setText(path);list.removeAllViews();
-    summary=result.entries.size()+" 项 · "+(cached?"缓存，下拉更新":"点击预览 · 按住1秒复制路径 · 3秒保存");
+    summary=UiText.get(R.string.extra_sftp_summary, result.entries.size(), cached?UiText.get(R.string.extra_sftp_cached):UiText.get(R.string.extra_sftp_instructions));
     scroll.finishRefresh();status.setText(summary);
     appendPage();
   }
 
   private void showSort() {
-    String[] modes={"名称","日期","大小"};
+    String[] modes={UiText.get(R.string.extra_sftp_name),UiText.get(R.string.extra_sftp_date),UiText.get(R.string.extra_sftp_size)};
     String[] rows=new String[modes.length];
     for(int i=0;i<modes.length;i++)rows[i]=(i==sortMode?"✓ ":"")+modes[i];
-    CenteredMenu.show(ui.activity,ui.fg,ui.muted,"排序",rows,which->{
+    CenteredMenu.show(ui.activity,ui.fg,ui.muted,UiText.get(R.string.extra_sftp_sort),rows,which->{
       sortMode=which;
       if(files!=null) {
         files=files.sorted(sortMode);visible=0;list.removeAllViews();appendPage();
@@ -223,10 +223,10 @@ final class SftpBrowser {
       list.addView(row);
     }
     if (visible<files.entries.size()) {
-      TextView more=ui.button("显示更多（剩余 "+(files.entries.size()-visible)+" 项）",false,()->{});
+      TextView more=ui.button(UiText.get(R.string.extra_sftp_more, files.entries.size()-visible),false,()->{});
       more.setOnClickListener(v->{list.removeView(more);appendPage();});list.addView(more);
     } else if (files.entries.isEmpty()) {
-      TextView empty=ui.text("此文件夹为空",14);empty.setTextColor(ui.muted);list.addView(empty);
+      TextView empty=ui.text(UiText.get(R.string.extra_sftp_empty),14);empty.setTextColor(ui.muted);list.addView(empty);
     }
   }
 }

@@ -12,6 +12,17 @@ final class PullRefreshScrollView extends ScrollView {
   private final Runnable refresh;
   private final Consumer<String> hint;
   private boolean refreshing;
+  // 工作面板 Tab 快滑：挂在 dispatchTouchEvent 层，保证事件落在任意子 View
+  // （卡片、文本、按钮）时手势检测器仍能收到完整事件流（onTouchListener 在
+  // 子 View 消费 DOWN 后收不到后续事件，导致卡片区域滑不动）。
+  private android.view.GestureDetector panelFling;
+
+  void setPanelFlingDetector(android.view.GestureDetector detector) { this.panelFling = detector; }
+
+  @Override public boolean dispatchTouchEvent(MotionEvent event) {
+    if (panelFling != null) panelFling.onTouchEvent(event);
+    return super.dispatchTouchEvent(event);
+  }
 
   PullRefreshScrollView(Context context, Runnable refresh, Consumer<String> hint) {
     super(context);
@@ -35,13 +46,13 @@ final class PullRefreshScrollView extends ScrollView {
     int action=event.getActionMasked();
     if (action==MotionEvent.ACTION_MOVE && !refreshing
         && gesture.move(event.getX(),event.getY(),getScrollY()==0)) {
-      hint.accept(gesture.ready()?"松开刷新":"下拉刷新");
+      hint.accept(gesture.ready()?UiText.get(R.string.work_text_217):UiText.get(R.string.work_text_218));
       return true;
     }
     if (action==MotionEvent.ACTION_UP && gesture.pulling()) {
       boolean ready=gesture.release();
       if (ready) {
-        refreshing=true; hint.accept("正在刷新…"); refresh.run();
+        refreshing=true; hint.accept(UiText.get(R.string.work_text_219)); refresh.run();
       } else hint.accept("");
       return true;
     }

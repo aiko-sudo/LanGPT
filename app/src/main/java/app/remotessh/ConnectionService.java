@@ -86,15 +86,15 @@ public final class ConnectionService extends Service {
   };
 
   static String summary(RemoteApp app) {
-    if (!app.connected) return app.state;
-    if (app.recoveryInProgress()) return app.recoveryStatus();
+    if (!app.connected) return ConnectionDisplay.state(app.state, AppLanguage.wrap(app).getResources().getConfiguration().getLocales().get(0));
+    if (app.recoveryInProgress()) return ConnectionDisplay.state(app.recoveryStatus(), AppLanguage.wrap(app).getResources().getConfiguration().getLocales().get(0));
     if (!app.approvals.isEmpty()) {
       String detail = LiveStatusNotifications.details(app);
       detail = detail.replaceAll("\\s+", " ");
       if (detail.length() > 180) detail = detail.substring(0, 180) + "…";
-      return (LiveStatusNotifications.isApproval(app.approvals.get(0)) ? "等待审批 · " : "等待回答 · ") + detail;
+      return (LiveStatusNotifications.isApproval(app.approvals.get(0)) ? AppLanguage.wrap(app).getString(R.string.conn_await_approval) : AppLanguage.wrap(app).getString(R.string.conn_await_answer)) + detail;
     }
-    return app.currentThreadRunning() ? "远端正在运行" : "已连接 · 等待消息";
+    return app.currentThreadRunning() ? AppLanguage.wrap(app).getString(R.string.conn_remote_running) : AppLanguage.wrap(app).getString(R.string.conn_connected_waiting);
   }
 
   private void updateNotification() {
@@ -116,7 +116,7 @@ public final class ConnectionService extends Service {
         .setVisibility(Notification.VISIBILITY_PRIVATE);
     PendingIntent stop = PendingIntent.getService(this, 1,
         new Intent(this, ConnectionService.class).setAction("disconnect"), PendingIntent.FLAG_IMMUTABLE);
-    status.addAction(new Notification.Action.Builder(null, "断开连接", stop).build());
+    status.addAction(new Notification.Action.Builder(null, AppLanguage.wrap(app).getString(R.string.conn_disconnect), stop).build());
     nm.notify(1, status.build());
   }
 
@@ -146,7 +146,7 @@ public final class ConnectionService extends Service {
       conversation.setShortcutId(shortcutId);
       PendingIntent bubbleIntent = PendingIntent.getActivity(this, id, bubble,
           PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
-      conversation.setStyle(new Notification.MessagingStyle(new Person.Builder().setName("你").build())
+      conversation.setStyle(new Notification.MessagingStyle(new Person.Builder().setName(AppLanguage.wrap(app).getString(R.string.conn_you)).build())
               .setConversationTitle(title).addMessage(summary, System.currentTimeMillis(), remote))
           .setBubbleMetadata(new Notification.BubbleMetadata.Builder(bubbleIntent, icon).setDesiredHeight(app.approvals.isEmpty() ? 144 : 208).build());
     }
@@ -186,8 +186,8 @@ public final class ConnectionService extends Service {
     renew.run();
     NotificationManager nm = getSystemService(NotificationManager.class);
     nm.createNotificationChannel(
-        new NotificationChannel("ssh", "SSH 连接", NotificationManager.IMPORTANCE_LOW));
-    NotificationChannel conversations = new NotificationChannel("conversation", "运行状态与审批气泡", NotificationManager.IMPORTANCE_DEFAULT);
+        new NotificationChannel("ssh", AppLanguage.wrap(app).getString(R.string.conn_channel), NotificationManager.IMPORTANCE_LOW));
+    NotificationChannel conversations = new NotificationChannel("conversation", AppLanguage.wrap(app).getString(R.string.conn_bubble_channel), NotificationManager.IMPORTANCE_DEFAULT);
     if (android.os.Build.VERSION.SDK_INT >= 29) conversations.setAllowBubbles(true);
     nm.createNotificationChannel(conversations);
     PendingIntent open =
@@ -208,10 +208,10 @@ public final class ConnectionService extends Service {
         new Notification.Builder(this, "ssh")
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(getString(R.string.app_name) + " · SSH")
-            .setContentText("远端连接正在运行")
+            .setContentText(AppLanguage.wrap(app).getString(R.string.conn_foreground))
             .setContentIntent(open)
             .setOngoing(true)
-            .addAction(new Notification.Action.Builder(null, "断开", stop).build())
+            .addAction(new Notification.Action.Builder(null, AppLanguage.wrap(app).getString(R.string.conn_disconnect_short), stop).build())
             .build());
     updateNotification();
   }

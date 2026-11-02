@@ -58,6 +58,10 @@ public final class SshTerminalActivity extends Activity {
         .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT).putExtra("dark", dark));
   }
 
+  @Override protected void attachBaseContext(android.content.Context base) {
+    super.attachBaseContext(AppLanguage.wrap(base));
+  }
+
   @Override protected void onCreate(Bundle state) {
     boolean dark = getIntent().getBooleanExtra("dark", false);
     setTheme(dark ? R.style.AppThemeDark : R.style.AppTheme);
@@ -74,10 +78,10 @@ public final class SshTerminalActivity extends Activity {
 
     LinearLayout header = ui.row();
     header.setPadding(ui.dp(12), ui.dp(4), ui.dp(12), ui.dp(4));
-    View back = ui.icon("back", "主机菜单", this::showHostMenu);
+    View back = ui.icon("back", getString(R.string.term_hosts), this::showHostMenu);
     back.setBackground(null);
     header.addView(back, new LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)));
-    TextView title = ui.text("SSH 终端", 20);
+    TextView title = ui.text(getString(R.string.term_title), 20);
     title.setTypeface(null, Typeface.BOLD);
     title.setGravity(Gravity.CENTER_VERTICAL);
     header.addView(title, new LinearLayout.LayoutParams(0, ui.dp(56), 1));
@@ -97,8 +101,8 @@ public final class SshTerminalActivity extends Activity {
       public void copy(String text) {
         if (text.isEmpty()) return;
         ((android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE))
-            .setPrimaryClip(android.content.ClipData.newPlainText("终端选区", text));
-        android.widget.Toast.makeText(SshTerminalActivity.this, "选择已复制", android.widget.Toast.LENGTH_SHORT).show();
+            .setPrimaryClip(android.content.ClipData.newPlainText(getString(R.string.term_selection), text));
+        android.widget.Toast.makeText(SshTerminalActivity.this, getString(R.string.term_copied), android.widget.Toast.LENGTH_SHORT).show();
       }
       public void input(String data) {
         if (connected) writeShell(data);
@@ -130,7 +134,7 @@ public final class SshTerminalActivity extends Activity {
       }
       terminal.keyboard(visible);
     });
-    if (state != null && !connected) print("[页面已重建，会话未恢复，请重新输入 ssh 命令]\n\n");
+    if (state != null && !connected) print(text("rebuilt"));
   }
 
   @Override protected void onDestroy() {
@@ -145,9 +149,9 @@ public final class SshTerminalActivity extends Activity {
     if (!connected) { finish(); return; }
     if (ownedDialog != null) ownedDialog.dismiss();
     ownedDialog = new AlertDialog.Builder(this)
-        .setMessage("断开 SSH 连接并退出？")
-        .setNegativeButton("取消", null)
-        .setPositiveButton("确认", (dialog, which) -> finish())
+        .setMessage(getString(R.string.term_exit_confirm))
+        .setNegativeButton(getString(R.string.term_cancel), null)
+        .setPositiveButton(getString(R.string.term_confirm), (dialog, which) -> finish())
         .show();
   }
 
@@ -157,7 +161,7 @@ public final class SshTerminalActivity extends Activity {
     String[] labels = new String[hosts.size() + 1];
     for (int i = 0; i < hosts.size(); i++)
       labels[i] = hosts.get(i) + (connected && hosts.get(i).equals(currentHost) ? " ✓" : "");
-    labels[hosts.size()] = "退出";
+    labels[hosts.size()] = getString(R.string.term_exit);
     if (ownedDialog != null) ownedDialog.dismiss();
     ownedDialog = CenteredMenu.show(this, ui.fg, ui.muted, null, labels, which -> {
       ownedDialog = null;
@@ -168,11 +172,13 @@ public final class SshTerminalActivity extends Activity {
       SshCredentials.Entry saved = command.error == null ? SshCredentials.load(this, command) : null;
       if (command.error != null) return;
       disconnectAll();
-      print("\n[已切换到 " + target + "]\n");
+      print(text("switched", target));
       if (saved == null) promptPassword(command);
       else startConnect(command, saved.password, false);
     });
   }
+
+  private String text(String key, String... args) { return TerminalText.text(AppLanguage.locale(this), key, args); }
 
   private void print(String text) { if (!destroyed) terminal.status(text); }
 
@@ -181,7 +187,7 @@ public final class SshTerminalActivity extends Activity {
   private void enqueue(Runnable task) {
     try { writer.execute(task); }
     catch (java.util.concurrent.RejectedExecutionException busy) {
-      if (!destroyed) print("\n[输入队列已满，本次输入未发送，请稍后重试]\n");
+      if (!destroyed) print(text("queue"));
     }
   }
 
@@ -199,8 +205,7 @@ public final class SshTerminalActivity extends Activity {
     String trimmed = line.trim();
     if (trimmed.isEmpty()) return;
     if (trimmed.equals("/help")) {
-      print("/help 帮助　/saved 已存凭证列表（用 ssh 命令自动匹配）\n"
-          + "/forget user@host 删除该主机凭证　exit 断开并退出\n");
+      print(text("help"));
       return;
     }
     if (trimmed.startsWith("/forget")) {
@@ -208,7 +213,7 @@ public final class SshTerminalActivity extends Activity {
       return;
     }
     if (trimmed.equals("/saved")) {
-      print("已存凭证按主机自动匹配；输入 ssh user@host 即可使用。\n");
+      print(text("saved"));
       return;
     }
     if (trimmed.equals("exit") || trimmed.equals("退出")) { finish(); return; }
@@ -216,24 +221,24 @@ public final class SshTerminalActivity extends Activity {
         app.profile == null ? "" : app.profile.user,
         app.profile == null ? 22 : app.profile.port);
     if (command.error != null) {
-      print("✗ " + command.error + "\n");
+      print("✗ " + TerminalText.error(AppLanguage.locale(this), command.error) + "\n");
       return;
     }
     SshCredentials.Entry saved = SshCredentials.load(this, command);
     if (saved != null) {
-      print("\n使用已保存的凭证连接 " + command.credentialKey() + "\n");
+      print(text("using", command.credentialKey()));
       startConnect(command, saved.password, false);
     } else promptPassword(command);
   }
 
   private void forgetCredential(String target) {
-    if (target.isEmpty()) { print("用法：/forget user@host[:port]\n"); return; }
+    if (target.isEmpty()) { print(text("usage")); return; }
     TerminalCommand parsed = TerminalCommand.parse("ssh " + target,
         app.profile == null ? "" : app.profile.user, app.profile == null ? 22 : app.profile.port);
-    if (parsed.error != null) { print("✗ " + parsed.error + "\n"); return; }
+    if (parsed.error != null) { print("✗ " + TerminalText.error(AppLanguage.locale(this), parsed.error) + "\n"); return; }
     SshCredentials.forget(this, parsed.user, parsed.host, parsed.port);
     HostHistory.remove(this, parsed.credentialKey());
-    print("已删除 " + parsed.credentialKey() + " 的凭证和主机历史\n");
+    print(text("forgot", parsed.credentialKey()));
   }
 
   private void promptPassword(TerminalCommand command) {
@@ -244,22 +249,22 @@ public final class SshTerminalActivity extends Activity {
     hint.setTextColor(ui.muted);
     column.addView(hint);
     EditText password = new EditText(this);
-    password.setHint("密码");
+    password.setHint(getString(R.string.term_password));
     password.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
     password.setSingleLine(true);
     column.addView(password);
     CheckBox remember = new CheckBox(this);
-    remember.setText("保存凭证（加密存储）");
+    remember.setText(getString(R.string.term_save_credential));
     remember.setChecked(true);
     column.addView(remember);
     if (ownedDialog != null) ownedDialog.dismiss();
     ownedDialog = new AlertDialog.Builder(this)
-        .setTitle("SSH 登录")
+        .setTitle(getString(R.string.term_login))
         .setView(column)
-        .setNegativeButton("取消", null)
-        .setPositiveButton("连接", (dialog, which) -> {
+        .setNegativeButton(getString(R.string.term_cancel), null)
+        .setPositiveButton(getString(R.string.term_connect), (dialog, which) -> {
           String secret = password.getText().toString();
-          if (secret.isEmpty()) { print("✗ 密码不能为空\n"); return; }
+          if (secret.isEmpty()) { print(text("password")); return; }
           startConnect(command, secret, remember.isChecked());
         })
         .show();
@@ -269,7 +274,7 @@ public final class SshTerminalActivity extends Activity {
     if (connecting || connected || destroyed) return;
     connecting = true;
     final int token = ++generation;
-    print("连接 " + command.credentialKey() + " …\n");
+    print(text("connecting", command.credentialKey()));
     connector = new Thread(() -> {
       Session open = null;
       Channel active = null;
@@ -339,7 +344,7 @@ public final class SshTerminalActivity extends Activity {
         }
         in.close();
       } catch (Exception failure) {
-        post(() -> { if (token == generation) print("\n[SSH 连接结束或失败]\n"); });
+        post(() -> { if (token == generation) print(text("failed")); });
       } finally {
         if (active != null) active.disconnect();
         if (open != null) open.disconnect();
@@ -351,7 +356,7 @@ public final class SshTerminalActivity extends Activity {
           trustWait = null;
           connected = connecting = false; shellIn = null; channel = null; session = null; currentHost = null;
           terminal.mode(false);
-          print("\n[连接已断开，请输入 ssh user@host]\n");
+          print(text("disconnected"));
         });
       }
     }, "ssh-terminal");
@@ -397,10 +402,10 @@ public final class SshTerminalActivity extends Activity {
       if (ownedDialog != null) ownedDialog.dismiss();
       trustWait = latch;
       ownedDialog = new AlertDialog.Builder(this)
-          .setTitle("首次连接该主机")
-          .setMessage(target + "\n指纹 " + fingerprint + "\n\n确认这是你要登录的主机？")
-          .setNegativeButton("取消", (dialog, which) -> latch.countDown())
-          .setPositiveButton("信任并记住", (dialog, which) -> {
+          .setTitle(getString(R.string.term_first_connect))
+          .setMessage(getString(R.string.term_fingerprint_confirm, target, fingerprint))
+          .setNegativeButton(getString(R.string.term_cancel), (dialog, which) -> latch.countDown())
+          .setPositiveButton(getString(R.string.term_trust), (dialog, which) -> {
             if (token == generation) accepted.set(true);
             latch.countDown();
           }).setOnDismissListener(dialog -> latch.countDown()).show();
@@ -432,7 +437,7 @@ public final class SshTerminalActivity extends Activity {
       if (oldChannel != null) oldChannel.disconnect();
       if (oldSession != null) oldSession.disconnect();
     }, "terminal-close").start();
-    if (!destroyed) { terminal.mode(false); print("\n[已断开，请输入 ssh user@host]\n"); }
+    if (!destroyed) { terminal.mode(false); print(text("closed")); }
   }
 
   private void hideTerminalKeyboard() {

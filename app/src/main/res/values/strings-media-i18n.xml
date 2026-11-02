@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="media_zoom">双指缩放 · 双击放大／复位</string>
+  <string name="media_swipe">\u0020· 左右滑动翻图</string>
+  <string name="media_close">关闭</string>
+  <string name="media_save_image">保存图片</string>
+  <string name="media_context_changed">连接或对话已变化，请重新打开图片后保存</string>
+  <string name="media_large_loading">正在加载大图…</string>
+  <string name="media_image_failed">图片加载失败 · 点按重试</string>
+  <string name="media_image_description">消息图片，点击查看大图</string>
+  <string name="media_image_deferred">图片 · 滚动到此处加载</string>
+  <string name="media_image_loading">正在加载图片…</string>
+  <string name="media_text">文本</string>
+  <string name="media_copy">复制</string>
+  <string name="media_copy_block">复制内容块 %1$d</string>
+  <string name="media_copyable_block">可复制内容块 %1$d</string>
+  <string name="media_pick_failed">无法打开保存位置选择</string>
+  <string name="media_download_prepare">准备下载…</string>
+  <string name="media_cancel">取消</string>
+  <string name="media_download_cancelled">下载已取消</string>
+  <string name="media_backup_failed">无法备份目标文件，已停止以保护原文件</string>
+  <string name="media_write_failed">无法写入所选位置</string>
+  <string name="media_saved">已保存：%1$s</string>
+  <string name="media_restore_failed_short">无法恢复</string>
+  <string name="media_restore_failed">写入失败且自动恢复失败，请检查目标文件；备份保留于应用缓存</string>
+  <string name="media_cancelled">已取消下载</string>
+  <string name="media_download_failed">下载失败：%1$s</string>
+</resources>

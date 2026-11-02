@@ -62,14 +62,24 @@ public class ConnectionLandingTest {
     activity=(SRC/'MainActivity.java').read_text()
     settings=method(activity,'  private void showSettings()')
     labels=re.search(r'String\[\] options = \{([^}]+)\}',settings).group(1)
-    assert re.findall(r'"([^"]+)"',labels)==['外观设置','文字大小','后台设置','添加连接','当前连接','应用沙箱']
-    assert 'which == 1) chooseFontSize();' in settings and 'which == 2) backgroundSettings();' in settings
-    assert 'which == 5) SandboxSettings.show(this);' in settings
+    assert re.findall(r'R\.string\.(\w+)',labels)==['main_text_19','main_text_16','main_text_17','main_text_18']
+    assert 'which == 0) backgroundSettings();' in settings
+    assert 'which == 3) SandboxSettings.show(this);' in settings
+    assert 'chooseTheme()' not in settings and 'chooseFontSize()' not in settings
+    import xml.etree.ElementTree as ET
+    for locale, expected in [('values', ['后台设置','外观设置','文字大小']), ('values-en', ['Background settings','Appearance','Text size'])]:
+        resources={e.attrib['name']: ''.join(e.itertext()) for f in (ROOT/'app/src/main/res'/locale).glob('*.xml') for e in ET.parse(f).getroot() if e.tag=='string'}
+        assert [resources[k] for k in ('main_text_19','main_text_21','main_text_20')] == expected
     background=method(activity,'  private void backgroundSettings()')
     assert '"Tailscale"' in background and 'TsnetSetup.show(this)' in background
+    assert 'R.string.main_text_21' in background and 'which == 4) chooseTheme();' in background
+    assert 'R.string.main_text_20' in background and 'which == 5) chooseFontSize();' in background
+    assert 'R.string.ui_interface_language' in background and 'which == 3) chooseLanguage();' in background
+    language=method(activity,'  private void chooseLanguage()')
+    assert 'AppLanguage.TAGS' in language and 'app.language.select(AppLanguage.TAGS[which])' in language
     assert '连接期间保持唤醒与通知' not in background
-    for label in ('介绍一下这个项目','检查项目中的问题','继续之前的工作'):
-        assert '"'+label+'"' in method(activity,'  private void renderEmpty()')
+    for key in ('main_text_116','main_text_117','main_text_118'):
+        assert 'R.string.'+key in method(activity,'  private void renderEmpty()')
     print('PASS exact settings order/action wiring and ordinary-versus-explicit connect wiring (source checks)')
 
 if __name__=='__main__':main()

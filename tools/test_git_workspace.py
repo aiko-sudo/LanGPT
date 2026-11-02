@@ -186,11 +186,12 @@ class SourceWiring(unittest.TestCase):
     def test_dialog_explains_purpose_and_host_errors(self):
         source=Path(__file__).resolve().parents[1].joinpath(
             'app/src/main/java/app/remotessh/GitWorkspaceDialog.java').read_text()
-        self.assertIn('在项目旁建 Git 隔离副本', source)
+        from test_history_navigation import assert_resource
+        assert_resource(source,'work_text_189','在项目旁建 Git 隔离副本')
         self.assertIn('request("status")', source)
         self.assertIn('Not inside a Git working tree', source)
         self.assertIn('explain(error)', source)
-        self.assertIn('重试', source)
+        assert_resource(source,'work_text_158','重试')
     def test_workspace_refresh_and_retry_wiring(self):
         source=Path(__file__).resolve().parents[1].joinpath(
             'app/src/main/java/app/remotessh/GitWorkspaceDialog.java').read_text()

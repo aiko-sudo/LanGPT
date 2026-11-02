@@ -61,7 +61,7 @@ final class SandboxSettings {
     }
     Collections.sort(apps, (x, y) -> String.CASE_INSENSITIVE_ORDER.compare(
         String.valueOf(x.loadLabel(pm)), String.valueOf(y.loadLabel(pm))));
-    if (apps.isEmpty()) { toast(a, "未找到可授权的应用"); return; }
+    if (apps.isEmpty()) { toast(a, UiText.get(R.string.network_text_054)); return; }
 
     // 独立副本：getStringSet 返回存储内部引用，直接增删行为不可靠。
     final Set<String> chosen = restore != null ? restore : new HashSet<>(whitelist(a));
@@ -92,7 +92,7 @@ final class SandboxSettings {
       String name = p.getString("exit_name", "");
       boolean on = p.getBoolean("exit_enabled", false) && !id.isEmpty();
       exitBox.setChecked(on);
-      exitText.setText(on ? name : "未使用");
+      exitText.setText(on ? name : UiText.get(R.string.network_text_055));
     };
     refreshExit.run();
     View divider = CenteredMenu.divider(a, 0xff8e8e93, a.getResources().getDisplayMetrics().density);
@@ -114,6 +114,19 @@ final class SandboxSettings {
         android.widget.CheckedTextView ctv = (android.widget.CheckedTextView) row;
         ctv.setGravity(Gravity.CENTER);
         ctv.setTextSize(13);
+        if (convertView == null && ctv.getCheckMarkDrawable() != null) {
+          // Scale only the mark drawing; retain the native row hit target and checked state.
+          android.graphics.drawable.Drawable mark = ctv.getCheckMarkDrawable();
+          ctv.setCheckMarkDrawable(new android.graphics.drawable.DrawableWrapper(mark) {
+            @Override public void draw(android.graphics.Canvas canvas) {
+              android.graphics.Rect bounds = getBounds();
+              int save = canvas.save();
+              canvas.scale(.8f, .8f, bounds.exactCenterX(), bounds.exactCenterY());
+              super.draw(canvas);
+              canvas.restoreToCount(save);
+            }
+          });
+        }
         return row;
       }
     });
@@ -127,17 +140,28 @@ final class SandboxSettings {
     list.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, listHeight));
     root.addView(list);
 
+    // 底部：自动启动复选框（勾选状态持久化；app 重启后延迟自动拉起沙箱）。
+    LinearLayout autoRow = new LinearLayout(a);
+    autoRow.setOrientation(LinearLayout.HORIZONTAL);
+    autoRow.setGravity(Gravity.CENTER_VERTICAL);
+    autoRow.setPadding(0, density * 6, 0, density * 4);
+    final CheckBox autoBox = new CheckBox(a);
+    autoBox.setTextSize(14);
+    autoBox.setText(UiText.get(R.string.network_text_074));
+    autoBox.setChecked(a.getSharedPreferences(PREFS, 0).getBoolean("autoStart", false));
+    autoBox.setOnCheckedChangeListener((btn, on) ->
+        a.getSharedPreferences(PREFS, 0).edit().putBoolean("autoStart", on).apply());
+    autoRow.addView(autoBox, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+    root.addView(autoRow);
+
+    // 单一动作按钮：运行中→停止沙箱；未运行→启动沙箱（合并原“启用/停用沙箱”两键）。
+    final boolean runningNow = TsnetVpnService.running();
     final AlertDialog dialog = new AlertDialog.Builder(a)
         .setView(root)
-        .setPositiveButton("启用", null) // 空名单时保持弹窗打开，见下方覆写
-        .setNeutralButton("停用沙箱", (d, w) -> {
-          a.getSharedPreferences(PREFS, 0).edit().putBoolean("enabled", false).apply();
-          stop(a);
-          toast(a, "沙箱已停用，白名单保留");
-        })
+        .setPositiveButton(runningNow ? UiText.get(R.string.network_text_072) : UiText.get(R.string.network_text_073), null)
         .show();
     if (dialog.getWindow() != null) dialog.getWindow().setLayout(
-        Math.round(a.getResources().getDisplayMetrics().widthPixels * .60f), ViewGroup.LayoutParams.WRAP_CONTENT);
+        Math.round(a.getResources().getDisplayMetrics().widthPixels * .80f), ViewGroup.LayoutParams.WRAP_CONTENT);
 
     list.setOnItemClickListener(new AdapterView.OnItemClickListener() {
       @Override public void onItemClick(AdapterView<?> parent, View view, int which, long id) {
@@ -147,7 +171,14 @@ final class SandboxSettings {
     });
 
     dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener((v) -> {
-      if (chosen.isEmpty()) { toast(a, "请先在列表勾选应用（点每一行即可勾选）"); return; }
+      if (TsnetVpnService.running()) {
+        a.getSharedPreferences(PREFS, 0).edit().putBoolean("enabled", false).apply();
+        stop(a);
+        toast(a, UiText.get(R.string.network_text_058));
+        dialog.dismiss();
+        return;
+      }
+      if (chosen.isEmpty()) { toast(a, UiText.get(R.string.network_text_059)); return; }
       a.getSharedPreferences(PREFS, 0).edit()
           .putStringSet("apps", new HashSet<>(chosen))
           .putBoolean("enabled", true)
@@ -159,7 +190,7 @@ final class SandboxSettings {
 
   /** 查询可用网络节点并让用户单选；选择结果通过 onUpdate 就地刷新区块显示。 */
   private static void pickExitNode(final Activity a, final Set<String> chosen, final Runnable onUpdate) {
-    toast(a, "正在查询网络节点…");
+    toast(a, UiText.get(R.string.network_text_060));
     new Thread(() -> {
       // 节点可能尚未启动（冷启动 10s+）：先拉起并等就绪，否则列表必空。
       final android.content.Context app = a.getApplicationContext();
@@ -173,15 +204,15 @@ final class SandboxSettings {
         try { Thread.sleep(500); } catch (InterruptedException e) { return; }
       }
       if (!ready) {
-        post(a, "内置 Tailscale 未就绪，请先在菜单「内置 Tailscale」完成授权后再试");
+        post(a, UiText.get(R.string.network_text_061));
         return;
       }
       String error = null;
       List<ExitNode.Option> options = null;
       try { options = ExitNode.online(); }
       catch (Exception e) {
-        error = e.getMessage() == null ? "查询网络节点失败" : e.getMessage();
-        if (error.contains("tsnet not running")) error = "内置 Tailscale 未运行";
+        error = e.getMessage() == null ? UiText.get(R.string.network_text_062) : e.getMessage();
+        if (error.contains("tsnet not running")) error = UiText.get(R.string.network_text_063);
       }
       final List<ExitNode.Option> result = options;
       final String failure = error;
@@ -197,15 +228,15 @@ final class SandboxSettings {
 
   private static void showNodePicker(final Activity a, final List<ExitNode.Option> result, final String failure, final Runnable onUpdate) {
     if (a.isFinishing() || a.isDestroyed()) return;
-    if (failure != null || result == null) { toast(a, failure != null ? failure : "查询网络节点失败"); return; }
+    if (failure != null || result == null) { toast(a, failure != null ? failure : UiText.get(R.string.network_text_062)); return; }
     android.content.SharedPreferences p = a.getSharedPreferences(PREFS, 0);
     if (result.isEmpty()) {
       // 网络节点不能在 App 内手动添加：来自 tailnet 中其他设备的通告。
       ArrayAdapter<String> hint = new ArrayAdapter<String>(a, android.R.layout.simple_list_item_1, new String[]{
-          "网络节点由 Tailscale 网络中的其他设备提供",
-          "在目标设备开启 exit node 通告，",
-          "并在 Tailscale 管理台批准后自动出现",
-          "知道了"}) {
+          UiText.get(R.string.network_text_064),
+          UiText.get(R.string.network_text_065),
+          UiText.get(R.string.network_text_066),
+          UiText.get(R.string.network_text_067)}) {
         @Override public View getView(int position, View convertView, ViewGroup parent) {
           android.widget.TextView tv = (android.widget.TextView) super.getView(position, convertView, parent);
           tv.setGravity(Gravity.CENTER);
@@ -219,7 +250,7 @@ final class SandboxSettings {
       return;
     }
     final String currentId = p.getString("exit_id", "");
-    final String NONE_LABEL = "不使用出口";
+    final String NONE_LABEL = UiText.get(R.string.network_text_068);
     // 与主菜单同风格：列表尾部放“不使用出口”，替代底部按钮。
     String[] labels = new String[result.size() + 1];
     int checked = -1;
@@ -241,7 +272,7 @@ final class SandboxSettings {
         .setSingleChoiceItems(adapter, checked, (d, which) -> {
           if (which == result.size()) {
             a.getSharedPreferences(PREFS, 0).edit().putBoolean("exit_enabled", false).apply();
-            toast(a, "已停用网络节点");
+            toast(a, UiText.get(R.string.network_text_069));
           } else {
             ExitNode.Option option = result.get(which);
             a.getSharedPreferences(PREFS, 0).edit()
@@ -265,7 +296,7 @@ final class SandboxSettings {
     Intent prepare = VpnService.prepare(a);
     if (prepare != null) {
       try { a.startActivityForResult(prepare, TsnetVpnService.VPN_REQUEST); }
-      catch (Exception e) { toast(a, "无法请求网络权限"); }
+      catch (Exception e) { toast(a, UiText.get(R.string.network_text_070)); }
       return;
     }
     start(a);
@@ -274,7 +305,7 @@ final class SandboxSettings {
   static void start(Context context) {
     try {
       context.startService(new Intent(context, TsnetVpnService.class).setAction(TsnetVpnService.ACTION_START));
-    } catch (Exception e) { toast(context, "沙箱服务启动失败"); }
+    } catch (Exception e) { toast(context, UiText.get(R.string.network_text_071)); }
   }
 
   static void stop(Context context) {

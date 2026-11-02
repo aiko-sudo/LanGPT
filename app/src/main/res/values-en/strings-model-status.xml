@@ -1,0 +1,6 @@
+<resources>
+<string name="model_catalog_loading">Refreshing models…</string>
+<string name="model_catalog_empty">No models returned; remote default is available</string>
+<string name="model_catalog_synced">Models synchronized</string>
+<string name="model_catalog_error">Refresh failed; retaining previous list: </string>
+</resources>

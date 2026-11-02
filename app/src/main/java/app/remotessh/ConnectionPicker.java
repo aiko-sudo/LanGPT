@@ -24,7 +24,7 @@ final class ConnectionPicker {
       boolean selected = current != null && current.id.equals(p.id);
       String heading = (selected ? "✓ " : "") + p.title() + " · " + agent(p.runtime);
       String address = p.user + "@" + p.host + ":" + p.port;
-      if (selected) address += app.connected ? " · 已连接" : app.connecting ? " · 连接中" : " · 未连接";
+      if (selected) address += app.connected ? UiText.get(R.string.main_text_77) : app.connecting ? UiText.get(R.string.main_text_78) : UiText.get(R.string.main_text_79);
       SpannableString label = new SpannableString(heading + "\n" + address);
       label.setSpan(new RelativeSizeSpan(.75f), heading.length()+1, label.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
       label.setSpan(new ForegroundColorSpan(muted), heading.length()+1, label.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
@@ -32,16 +32,16 @@ final class ConnectionPicker {
       actions.add(() -> connect.accept(p));
     }
     if (current != null && !app.connected && !app.connecting) {
-      labels.add("重试当前连接"); actions.add(() -> connect.accept(current));
+      labels.add(UiText.get(R.string.main_text_80)); actions.add(() -> connect.accept(current));
       if (previous != null && !previous.id.equals(current.id)) {
-        labels.add("返回原连接 · " + previous.title()); actions.add(() -> connect.accept(previous));
+        labels.add(UiText.get(R.string.main_text_81) + previous.title()); actions.add(() -> connect.accept(previous));
       }
     }
     if (current != null) {
-      labels.add("编辑当前连接"); actions.add(() -> edit.accept(current));
+      labels.add(UiText.get(R.string.main_text_82)); actions.add(() -> edit.accept(current));
     } else if (!profiles.isEmpty()) {
       Profile first=profiles.get(0);
-      labels.add("编辑连接"); actions.add(() -> edit.accept(first));
+      labels.add(UiText.get(R.string.main_text_15)); actions.add(() -> edit.accept(first));
     }
     if (labels.isEmpty()) { edit.accept(new Profile()); return; }
     CenteredMenu.show(activity,fg,muted,"",labels.toArray(new CharSequence[0]),i -> actions.get(i).run());

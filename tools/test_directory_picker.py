@@ -4,7 +4,7 @@ Validates control labels, complete contents and late-result guards, not device l
 from pathlib import Path
 import subprocess
 import tempfile
-from test_history_navigation import method
+from test_history_navigation import method, java_text_stubs, assert_resource
 ROOT=Path(__file__).resolve().parents[1];SRC=ROOT/'app/src/main/java/app/remotessh'
 
 def main():
@@ -12,7 +12,8 @@ def main():
     methods='\n'.join(method(source,s) for s in ['  private String displayedPath()', '  private void loading()',
       '  private void load(String path)', '  private void display(RemoteFiles result)', '  private void resort()',
       '  private String sortLabel(', '  private void sortBarRefresh('])
-    up_line=next(line.strip() for line in source.splitlines() if 'up = button("上一级"' in line)
+    up_line=next(line.strip() for line in source.splitlines() if 'up = button(' in line)
+    assert_resource(up_line,'work_text_149','上一级')
     with tempfile.TemporaryDirectory(dir=ROOT/'tools',prefix='directory-picker-test-', ignore_cleanup_errors=True) as folder:
         folder=Path(folder)
         view=folder/'android/view/View.java';view.parent.mkdir(parents=True);view.write_text('package android.view;public class View {public static final int VISIBLE=0,GONE=8;}')
@@ -27,6 +28,7 @@ public void show(){}}}''')
         test=folder/'PickerTest.java'
         test.write_text('''package app.remotessh;
 import java.util.*;import java.util.function.*;import android.widget.TextView;import android.view.View;import android.app.AlertDialog;
+''' + java_text_stubs(methods + up_line) + '''
 class Pending {String path;Consumer<RemoteFiles> success;Consumer<String> failure;Pending(String p,Consumer<RemoteFiles>s,Consumer<String>f){path=p;success=s;failure=f;}}
 class App {List<Pending> pending=new ArrayList<>();void browseProjectDirectory(String p,Consumer<RemoteFiles>s,Consumer<String>f){pending.add(new Pending(p,s,f));}}
 class Ui {Object activity=new Object();void clickable(TextView view,Runnable click){view.click=click;}TextView button(String s,boolean p,Runnable c){TextView v=new TextView();v.setText(s);v.click=c;return v;}}
@@ -73,8 +75,10 @@ public class PickerTest {
         subprocess.run(['javac','-d',str(folder),str(view),str(widget),str(alert),str(SRC/'RemoteFiles.java'),str(SRC/'RemoteDirectory.java'),str(test)],check=True)
         subprocess.run(['java','-cp',str(folder),'app.remotessh.PickerTest'],check=True)
     assert 'getChildCount() == 2' not in source and 'sortBarRefresh(nameCol,dateCol)' in source
-    assert 'if(entry.directory || entry.link)load(' in source and '这是文件，请选择文件夹作为项目' in source
-    assert '使用此文件夹' in source and '新建文件夹' in source and 'load(result.path)' in source
+    assert 'if(entry.directory || entry.link)load(' in source
+    for name, label in [('work_text_162','这是文件，请选择文件夹作为项目'),('work_text_153','使用此文件夹'),('work_text_152','新建文件夹'),('work_text_150','输入路径')]:
+        assert_resource(source,name,label)
+    assert 'load(result.path)' in source
     controller=(SRC/'DirectoryController.java').read_text();assert 'current.listFiles(path)' in controller
     print('PASS exact sort-label references, nonselectable regular files and actual SFTP browse/create wiring')
 if __name__=='__main__':main()

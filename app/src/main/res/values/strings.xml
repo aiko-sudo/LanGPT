@@ -1,3 +1,19 @@
 <resources>
     <string name="app_name">LanGPT</string>
+    <string name="ui_background_settings">后台设置</string>
+    <string name="ui_battery_unrestricted">电池设为不受限</string>
+    <string name="ui_notifications_and_live_activities">通知与流体云</string>
+    <string name="ui_interface_language">界面语言</string>
+    <string name="ui_language_follow_system">跟随系统</string>
+    <string name="ui_appearance">外观设置</string>
+    <string name="ui_font_size">文字大小</string>
+    <string name="ui_add_connection">添加连接</string>
+    <string name="ui_current_connection">当前连接</string>
+    <string name="ui_app_sandbox">应用沙箱</string>
+    <string name="ui_follow_system">跟随系统</string>
+    <string name="ui_smaller">更小</string>
+    <string name="ui_small">小</string>
+    <string name="ui_standard">标准</string>
+    <string name="ui_large">大</string>
+    <string name="ui_larger">更大</string>
 </resources>

@@ -97,7 +97,7 @@ public final class MainActivity extends Activity {
         public void run() {
           if (app.currentThreadRunning() && busyLabel != null && scroll != null && scroll.isFollowing())
             busyLabel.setText(
-                (app.state.startsWith("正在停止") ? "正在停止" : "正在处理")
+                (app.state.startsWith("正在停止") ? UiText.get(R.string.main_extra_3) : UiText.get(R.string.main_extra_4))
                     + new String[] {"·", "··", "···"}[pulse++ % 3]);
           if (++pollTick % 7 == 0) app.pollReadOnly();
           if (pollTick % 22 == 0 && app.connected && browser != null && browser.isShowing()) app.refreshThreads(false);
@@ -113,7 +113,7 @@ public final class MainActivity extends Activity {
       config.fontScale *= scale;
       base = base.createConfigurationContext(config);
     }
-    super.attachBaseContext(base);
+    super.attachBaseContext(AppLanguage.wrap(base));
   }
 
   private void openNotificationConversation(Intent intent) {
@@ -332,7 +332,7 @@ public final class MainActivity extends Activity {
     title.setEllipsize(TextUtils.TruncateAt.END);
     title.setTypeface(null, Typeface.BOLD);
     heading.addView(title);
-    status = text("通过 SSH 连接你的电脑", 11, muted);
+    status = text(UiText.get(R.string.main_text_86), 11, muted);
     status.setMaxLines(1);
     status.setEllipsize(TextUtils.TruncateAt.END);
     heading.addView(status);
@@ -340,12 +340,12 @@ public final class MainActivity extends Activity {
     clickable(heading, this::conversationInfo);
     runningIndicator = new ProgressBar(this);
     runningIndicator.setIndeterminate(true);
-    runningIndicator.setContentDescription("当前对话正在运行");
+    runningIndicator.setContentDescription(UiText.get(R.string.main_text_87));
     bar.addView(runningIndicator, new LinearLayout.LayoutParams(dp(20), dp(20)));
     bar.addView(
         icon(
             "more",
-            "连接与对话菜单",
+            UiText.get(R.string.main_text_88),
             this::showMainMenu),
         new LinearLayout.LayoutParams(dp(48), dp(48)));
     projectLabel = text("", 12, muted);
@@ -362,12 +362,12 @@ public final class MainActivity extends Activity {
     center.addView(usageLabel);
     readOnlyBar = column();
     readOnlyBar.setPadding(dp(16), dp(2), dp(16), dp(6));
-    readOnlyLabel = text("只读历史 · 尚未取得写入权限", 13, muted);
+    readOnlyLabel = text(UiText.get(R.string.main_text_89), 13, muted);
     readOnlyLabel.setPadding(dp(4), dp(6), dp(4), dp(6));
     readOnlyBar.addView(readOnlyLabel);
     roActions = row();
-    resumeButton=action("接续",()->app.resume(app.threadId));newChatButton=action("新会话",this::startNewChat);
-    resumeButton.setContentDescription("接续");resumeSpinner=new LoadingSpinner(fg,dp(16));
+    resumeButton=action(UiText.get(R.string.main_text_12),()->app.resume(app.threadId));newChatButton=action(UiText.get(R.string.main_text_13),this::startNewChat);
+    resumeButton.setContentDescription(UiText.get(R.string.main_text_12));resumeSpinner=new LoadingSpinner(fg,dp(16));
     TextView[] readOnlyControls = {resumeButton,newChatButton};
     for (int i=0;i<readOnlyControls.length;i++) {
       readOnlyControls[i].setSingleLine(true); readOnlyControls[i].setEllipsize(TextUtils.TruncateAt.END);
@@ -379,7 +379,7 @@ public final class MainActivity extends Activity {
     readOnlyBar.setVisibility(View.GONE);
     center.addView(readOnlyBar);
     error = text("", 13, isDark() ? Color.rgb(255, 151, 137) : Color.rgb(165, 47, 36));
-    error.setContentDescription("查看连接错误");
+    error.setContentDescription(UiText.get(R.string.main_text_90));
     error.setPadding(dp(20), dp(12), dp(20), dp(12));
     error.setBackground(rounded(panel, 12));
     error.setMaxLines(2);
@@ -389,7 +389,7 @@ public final class MainActivity extends Activity {
     FrameLayout viewport = new FrameLayout(this);
     center.addView(viewport, new LinearLayout.LayoutParams(-1, 0, 1));
     scroll = new ConversationScrollView(this);
-    scroll.setContentDescription("对话消息");
+    scroll.setContentDescription(UiText.get(R.string.main_text_91));
     scroll.setFillViewport(true);
     scroll.setClipToPadding(false);
     scroll.setVerticalScrollBarEnabled(false);
@@ -420,7 +420,7 @@ public final class MainActivity extends Activity {
           if(pullStart[0]>=0 && scroll.getScrollY()==0 && event.getY()-pullStart[0]>dp(72)) {
             pullStart[0]=-1f;
             if(app.readOnly && !app.busy && app.connected) {
-              android.widget.Toast.makeText(this,"正在刷新历史…",android.widget.Toast.LENGTH_SHORT).show();
+              android.widget.Toast.makeText(this,UiText.get(R.string.main_text_92),android.widget.Toast.LENGTH_SHORT).show();
               app.refreshReadOnly();
             }
           }
@@ -433,19 +433,19 @@ public final class MainActivity extends Activity {
     empty.setGravity(Gravity.CENTER);
     empty.setPadding(dp(28), dp(32), dp(28), dp(56));
     conversation.addView(empty, new LinearLayout.LayoutParams(-1, -1));
-    historyButton=action("加载更早的消息",this::loadOlderMessages);
-    historyButton.setContentDescription("加载更早的消息");
+    historyButton=action(UiText.get(R.string.main_text_93),this::loadOlderMessages);
+    historyButton.setContentDescription(UiText.get(R.string.main_text_93));
     LinearLayout.LayoutParams historyParams=new LinearLayout.LayoutParams(wide?dp(Math.min(740,available)-32):-1,dp(48));historyParams.setMargins(dp(16),dp(8),dp(16),0);
     conversation.addView(historyButton,historyParams);historyButton.setVisibility(View.GONE);
     messages = column();
     messages.setPadding(dp(16), dp(8), dp(16), dp(8));
     conversation.addView(
         messages, new LinearLayout.LayoutParams(wide ? dp(Math.min(740, available)) : -1, -2));
-    busyLabel = text("正在处理…", 14, muted);
+    busyLabel = text(UiText.get(R.string.main_text_94), 14, muted);
     busyLabel.setPadding(dp(16), 0, dp(16), dp(8));
     conversation.addView(
         busyLabel, new LinearLayout.LayoutParams(wide ? dp(Math.min(740, available)) : -1, -2));
-    jump = icon("arrow", "滚动到最新消息", () -> { historyLimit=60;scroll.follow(); render(); followLatest(); });
+    jump = icon("arrow", UiText.get(R.string.main_text_95), () -> { historyLimit=60;scroll.follow(); render(); followLatest(); });
     jump.setRotation(180);
     jump.setBackground(rounded(panel, 24));
     FrameLayout.LayoutParams jp =
@@ -474,7 +474,7 @@ public final class MainActivity extends Activity {
     input.setTextColor(fg);
     input.setHintTextColor(muted);
     input.setTextSize(16);
-    input.setHint("发送消息");
+    input.setHint(UiText.get(R.string.main_text_96));
     input.setBackgroundColor(Color.TRANSPARENT);
     input.setMinLines(1);
     input.setMaxLines(6);
@@ -483,7 +483,7 @@ public final class MainActivity extends Activity {
         android.text.InputType.TYPE_CLASS_TEXT
             | android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
             | android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
-    input.setContentDescription("消息输入框");
+    input.setContentDescription(UiText.get(R.string.main_text_97));
     attachmentStrip = row();
     attachmentStrip.setPadding(dp(4), dp(8), dp(4), dp(4));
     attachmentScroll = new HorizontalScrollView(this);
@@ -494,21 +494,21 @@ public final class MainActivity extends Activity {
     LinearLayout controls = row();
     composer.addView(controls);
     controls.addView(
-        icon("plus", "添加附件或项目模板", this::pickImage),
+        icon("plus", UiText.get(R.string.main_text_98), this::pickImage),
         new LinearLayout.LayoutParams(dp(40), dp(40)));
-    modelButton = text("默认模型", 12, fg);
+    modelButton = text(UiText.get(R.string.main_text_99), 12, fg);
     modelButton.setPadding(dp(4), dp(6), dp(4), dp(6));
     modelButton.setMinHeight(dp(40));
     modelButton.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
     modelButton.setBackground(new RippleDrawable(android.content.res.ColorStateList.valueOf(line), null, rounded(fg, 8)));
-    modelButton.setContentDescription("选择模型与推理强度");
+    modelButton.setContentDescription(UiText.get(R.string.main_text_100));
     clickable(modelButton, this::chooseModel);
     LinearLayout.LayoutParams modelParams = new LinearLayout.LayoutParams(0, -2, 1);
     modelParams.setMargins(0, 0, dp(4), 0);
     controls.addView(modelButton, modelParams);
-    permissionButton = icon("shield", "权限：沿用远端权限", this::choosePermission);
+    permissionButton = icon("shield", UiText.get(R.string.main_text_101), this::choosePermission);
     controls.addView(permissionButton, new LinearLayout.LayoutParams(dp(44), dp(44)));
-    send = icon("arrow", "发送消息", this::sendMessage);
+    send = icon("arrow", UiText.get(R.string.main_text_96), this::sendMessage);
     controls.addView(send, new LinearLayout.LayoutParams(dp(40), dp(40)));
     input.addTextChangedListener(
         new TextWatcher() {
@@ -575,7 +575,7 @@ public final class MainActivity extends Activity {
     }
     title.setText(getString(R.string.app_name));
     String project = app.currentProject();
-    projectLabel.setText("项目 · " + (project.isEmpty() ? "远端默认目录" : project));
+    projectLabel.setText(UiText.get(R.string.main_text_102) + (project.isEmpty() ? UiText.get(R.string.main_text_103) : project));
     projectLabel.setVisibility(app.profile == null ? View.GONE : View.VISIBLE);
     usageLabel.setText(app.usage.summary());
     usageLabel.setVisibility(app.connected ? View.VISIBLE : View.GONE);
@@ -594,17 +594,17 @@ public final class MainActivity extends Activity {
       roActions.animate().alpha(0f).setDuration(400)
           .withEndAction(()->readOnlyBar.setVisibility(View.GONE)).start();
     }
-    readOnlyLabel.setText("只读历史 · 尚未取得写入权限");
+    readOnlyLabel.setText(UiText.get(R.string.main_text_89));
     boolean available=app.connected && !app.connecting && !recovering;
     newChatButton.setEnabled(available);
     resumeButton.setEnabled(available && app.readOnly && !app.attaching);
     // Reading project history is not permission to resume a writer.
-    updateRecoveryButton(resumeButton,resumeSpinner,resuming,"接续中","接续");
+    updateRecoveryButton(resumeButton,resumeSpinner,resuming,UiText.get(R.string.main_text_104),UiText.get(R.string.main_text_12));
     input.setEnabled(true);
-    input.setHint(app.readOnly ? "先准备消息，接续后发送" : "发送消息");
+    input.setHint(app.readOnly ? UiText.get(R.string.main_text_105) : UiText.get(R.string.main_text_96));
     status.setText(app.connected ? AppIcons.label(this,"●  " + app.profile.title() + "  ·  SSH","status",null,Color.rgb(48,148,112),dp(14)) : "");
     status.setTextColor(app.connected ? Color.parseColor(isDark()?"#309470":"#247A5B") : muted);
-    error.setText(app.error.isEmpty() ? "" : app.error.split("\n", 2)[0] + "\n点按查看原因和诊断信息");
+    error.setText(app.error.isEmpty() ? "" : app.error.split("\n", 2)[0] + UiText.get(R.string.main_text_106));
     error.setVisibility(app.error.isEmpty() ? View.GONE : View.VISIBLE);
     renderAttachments();
     renderQueuedMessage();
@@ -613,8 +613,8 @@ public final class MainActivity extends Activity {
     boolean forced = app.forcedApprovals.active();
     permissionButton.icon = forced ? "bolt" : PermissionPicker.icon(displayedPermission);
     permissionButton.color = forced ? permissionPicker.red() : permissionPicker.color(displayedPermission);
-    permissionButton.setContentDescription("权限：" + (forced ? "强制允许" : displayedPermission.label));
-    permissionButton.setTooltipText(forced ? "强制允许 · 新权限生效前自动允许审批" : displayedPermission.label + (app.permissionMode==PermissionMode.INHERIT && displayedPermission!=PermissionMode.INHERIT ? " · 当前远端状态" : ""));
+    permissionButton.setContentDescription(UiText.get(R.string.main_text_107) + (forced ? UiText.get(R.string.main_text_108) : displayedPermission.label(UiText.locale())));
+    permissionButton.setTooltipText(forced ? UiText.get(R.string.main_text_109) : displayedPermission.label(UiText.locale()) + (app.permissionMode==PermissionMode.INHERIT && displayedPermission!=PermissionMode.INHERIT ? UiText.get(R.string.main_text_110) : ""));
     permissionButton.invalidate();
     modelButton.setText(ModelOptions.displayName(app.models, app.model)
         + (app.reasoningEffort.isEmpty() ? "" : " · " + ModelOptions.label(app.reasoningEffort))
@@ -623,12 +623,12 @@ public final class MainActivity extends Activity {
     runningIndicator.setVisibility(app.currentThreadRunning() ? View.VISIBLE : View.GONE);
     if (scroll.isFollowing() || historyRender) {
       messageUpdatesPaused = false;
-      jump.setTooltipText("滚动到最新消息");
+      jump.setTooltipText(UiText.get(R.string.main_text_95));
       List<ChatItem> visibleItems = new ArrayList<>();
       List<ChatItem> presentation=app.displayItems();
       int start=Math.max(0,presentation.size()-historyLimit);
       historyButton.setVisibility(start>0?View.VISIBLE:View.GONE);
-      historyButton.setText("加载更早的消息（还有 "+start+" 项）");
+      historyButton.setText(UiText.get(R.string.main_extra_5)+start+UiText.get(R.string.main_extra_6));
       for (ChatItem source : presentation.subList(start,presentation.size())) {
         ChatItem snapshot = new ChatItem(source.id, source.type, source.text);
         snapshot.detail = source.detail; snapshot.status = source.status;
@@ -640,7 +640,7 @@ public final class MainActivity extends Activity {
       empty.setVisibility(visibleItems.isEmpty() && !app.busy ? View.VISIBLE : View.GONE);
       messages.setVisibility(visibleItems.isEmpty() ? View.GONE : View.VISIBLE);
       busyLabel.setVisibility(app.currentThreadRunning() ? View.VISIBLE : View.GONE);
-      if (app.remoteRunning && app.readOnly) busyLabel.setText("远端运行中 · 自动刷新历史");
+      if (app.remoteRunning && app.readOnly) busyLabel.setText(UiText.get(R.string.main_text_111));
       if (empty.getVisibility() == View.VISIBLE) renderEmpty();
       List<String> desired = new ArrayList<>();
       for (ChatItem item : visibleItems) desired.add(item.id);
@@ -692,7 +692,7 @@ public final class MainActivity extends Activity {
     } else {
       messageUpdatesPaused = true;
       jump.setVisibility(View.VISIBLE);
-      jump.setTooltipText("消息区已暂停刷新，回到底部查看最新内容");
+      jump.setTooltipText(UiText.get(R.string.main_text_112));
     }
     scheduleMedia();
     if (wide) fillNavigation(sidebar, false);
@@ -703,7 +703,7 @@ public final class MainActivity extends Activity {
   }
 
   private void updateRecoveryButton(TextView button,LoadingSpinner spinner,boolean active,String busyText,String idleText) {
-    button.setText(active?busyText:idleText);button.setTooltipText(active?app.recoveryStatus():idleText);
+    button.setText(active?busyText:idleText);button.setTooltipText(active?ConnectionDisplay.state(app.recoveryStatus(),UiText.locale()):idleText);
     button.setCompoundDrawablePadding(dp(4));button.setCompoundDrawables(active?spinner:null,null,null,null);
     if(active && visibleActivity)spinner.start();else spinner.stop();
   }
@@ -718,7 +718,7 @@ public final class MainActivity extends Activity {
     empty.removeAllViews();
     if (app.connected) {
       // Connected landing keeps only the subtitle and suggestions; no brand mark, no heading.
-      TextView sub = text("从一个问题开始，让工作继续。", 14, muted);
+      TextView sub = text(UiText.get(R.string.main_text_113), 14, muted);
       sub.setGravity(Gravity.CENTER);
       sub.setLineSpacing(dp(5), 1);
       sub.setPadding(0, dp(28), 0, dp(20));
@@ -727,20 +727,20 @@ public final class MainActivity extends Activity {
       IconView mark = new IconView(this, "brand", fg);
       mark.setBackground(rounded(panel, 28));
       empty.addView(mark, new LinearLayout.LayoutParams(dp(88), dp(88)));
-      TextView h = text("灵感无处不在", 26, fg);
+      TextView h = text(UiText.get(R.string.main_text_114), 26, fg);
       h.setTypeface(null, Typeface.BOLD);
       h.setGravity(Gravity.CENTER);
       LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(-1, -2);
       hp.topMargin = dp(26);
       empty.addView(h, hp);
-      TextView sub = text("连接 SSH 主机，在这里继续你的工作。", 14, muted);
+      TextView sub = text(UiText.get(R.string.main_text_115), 14, muted);
       sub.setGravity(Gravity.CENTER);
       sub.setLineSpacing(dp(5), 1);
       sub.setPadding(0, dp(12), 0, dp(28));
       empty.addView(sub);
     }
     if (app.connected) {
-      for (String suggestion : new String[] {"介绍一下这个项目", "检查项目中的问题", "继续之前的工作"}) {
+      for (String suggestion : new String[] {UiText.get(R.string.main_text_116), UiText.get(R.string.main_text_117), UiText.get(R.string.main_text_118)}) {
         TextView chip =
             action(
                 suggestion + "  ↗",
@@ -757,7 +757,7 @@ public final class MainActivity extends Activity {
     } else {
       TextView button =
           action(
-              app.connecting ? "取消连接" : "连接电脑",
+              app.connecting ? UiText.get(R.string.main_text_119) : UiText.get(R.string.main_text_120),
               () -> {
                 if (app.connecting) app.disconnect();
                 else if (app.vault.profiles.isEmpty()) editProfile(new Profile(), true);
@@ -823,15 +823,15 @@ public final class MainActivity extends Activity {
       proseCard.setPadding(dp(progress?4:14),dp(progress?3:6),dp(progress?4:14),dp(progress?3:8));
       wrap.addView(proseCard,new LinearLayout.LayoutParams(-1,-2));
       if(!progress) {
-        LinearLayout heading=row();TextView kind=text(plan?"计划":"回复",12,muted);heading.addView(kind,new LinearLayout.LayoutParams(0,-2,1));
-        IconView copyButton=icon("copy",plan?"复制计划":"复制回复",()->{ChatItem latest=currentItems.get(item.id);if(latest!=null)copy(latest.text);});
+        LinearLayout heading=row();TextView kind=text(plan?UiText.get(R.string.main_text_121):UiText.get(R.string.main_text_122),12,muted);heading.addView(kind,new LinearLayout.LayoutParams(0,-2,1));
+        IconView copyButton=icon("copy",plan?UiText.get(R.string.main_text_123):UiText.get(R.string.main_text_124),()->{ChatItem latest=currentItems.get(item.id);if(latest!=null)copy(latest.text);});
         heading.addView(copyButton,new LinearLayout.LayoutParams(dp(48),dp(48)));proseCard.addView(heading);
       }
       MessageBodyView messageBody = new MessageBodyView(this,progress?muted:fg,muted,Color.parseColor(isDark()?"#2B2B2B":"#ECEEF1"),this::openLink,this::copy);
       messageBodies.put(item.id,messageBody); proseCard.addView(messageBody,new LinearLayout.LayoutParams(-1,-2));
     } else if(item.user()) {
       LinearLayout bubbleRow=row();bubbleRow.setGravity(Gravity.END|Gravity.BOTTOM);
-      IconView copyButton=icon("copy", "复制消息", () -> {ChatItem latest=currentItems.get(item.id);if(latest!=null)copy(latest.text);});
+      IconView copyButton=icon("copy", UiText.get(R.string.main_text_125), () -> {ChatItem latest=currentItems.get(item.id);if(latest!=null)copy(latest.text);});
       copyButton.alignBottomEnd=true;
       bubbleRow.addView(copyButton,new LinearLayout.LayoutParams(dp(48),dp(48)));
       bubbleRow.addView(content,new LinearLayout.LayoutParams(-2,-2));
@@ -883,17 +883,17 @@ public final class MainActivity extends Activity {
     send.setAlpha(enabled ? 1 : .28f);
     send.color = bg;
     send.setBackground(rounded(fg, 24));
-    send.setContentDescription(stop ? "停止生成" : app.busy ? "发送引导消息" : "发送消息");
+    send.setContentDescription(stop ? UiText.get(R.string.main_text_126) : app.busy ? UiText.get(R.string.main_text_127) : UiText.get(R.string.main_text_96));
     send.setEnabled(enabled);
     send.invalidate();
   }
 
   private void sendMessage() {
     if (app.readOnly) {
-      toast("此线程正在其他客户端运行，请先接续或新建对话");
+      toast(UiText.get(R.string.main_text_128));
       return;
     }
-    if (app.attaching) { toast("附件正在上传，请稍候"); return; }
+    if (app.attaching) { toast(UiText.get(R.string.main_text_129)); return; }
     if (app.busy) {
       String guidance = input.getText().toString().trim();
       if (guidance.isEmpty() && app.draftImages.isEmpty() && app.draftFiles.isEmpty()) app.interrupt();
@@ -916,26 +916,26 @@ public final class MainActivity extends Activity {
     final String thread = app.threadId, turn = app.turnId;
     LinearLayout options = column();
     options.setPadding(dp(20), 0, dp(20), dp(8));
-    TextView preview = text(text.isEmpty()?"发送已选择的附件":text, 14, muted);
+    TextView preview = text(text.isEmpty()?UiText.get(R.string.main_text_130):text, 14, muted);
     preview.setMaxLines(2); preview.setEllipsize(TextUtils.TruncateAt.END);
     preview.setPadding(dp(8), dp(4), dp(8), dp(16)); options.addView(preview);
     Dialog[] holder = new Dialog[1];
-    if(app.canSteer()) options.addView(action("立即引导", () -> {
+    if(app.canSteer()) options.addView(action(UiText.get(R.string.main_text_131), () -> {
       if (thread.equals(app.threadId) && turn.equals(app.turnId) && app.steer(text)) {
         if (input.getText().toString().trim().equals(text)) input.setText("");
-      } else toast("本轮状态已变化，请重新发送");
+      } else toast(UiText.get(R.string.main_text_132));
       holder[0].dismiss();
     }));
-    TextView later = action("稍后发送", () -> {
+    TextView later = action(UiText.get(R.string.main_text_133), () -> {
       if (thread.equals(app.threadId) && turn.equals(app.turnId) && app.queueMessage(text,true)) {
         if (input.getText().toString().trim().equals(text)) input.setText("");
-      } else toast(app.queuedMessage().isEmpty() ? "本轮状态已变化，请重新发送" : "队列已满或当前状态不能排队");
+      } else toast(app.queuedMessage().isEmpty() ? UiText.get(R.string.main_text_132) : UiText.get(R.string.main_text_134));
       holder[0].dismiss();
     });
     LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.topMargin = dp(8);
     options.addView(later, lp);
-    options.addView(action("查看待发队列",()->{holder[0].dismiss();showPendingQueue();}));
-    holder[0] = sheet("发送方式", options);
+    options.addView(action(UiText.get(R.string.main_text_135),()->{holder[0].dismiss();showPendingQueue();}));
+    holder[0] = sheet(UiText.get(R.string.main_text_136), options);
   }
 
   private void renderQueuedMessage() {
@@ -943,14 +943,14 @@ public final class MainActivity extends Activity {
     String queued = app.queuedMessage();
     queuedBar.setVisibility(queued.isEmpty() ? View.GONE : View.VISIBLE);
     if (queued.isEmpty()) return;
-    TextView preview = text("待发送 · " + queued, 12, muted);
+    TextView preview = text(UiText.get(R.string.main_text_137) + queued, 12, muted);
     preview.setMaxLines(1); preview.setEllipsize(TextUtils.TruncateAt.END);
     preview.setPadding(dp(8), dp(8), dp(8), dp(8));
     preview.setOnClickListener(v->showPendingQueue());
     queuedBar.addView(preview, new LinearLayout.LayoutParams(0, -2, 1));
     if (app.connected && !app.busy && !app.readOnly)
-      queuedBar.addView(icon("arrow", "发送待发消息", app::sendQueuedMessage), new LinearLayout.LayoutParams(dp(40), dp(40)));
-    queuedBar.addView(icon("menu", "管理待发队列", this::showPendingQueue), new LinearLayout.LayoutParams(dp(40), dp(40)));
+      queuedBar.addView(icon("arrow", UiText.get(R.string.main_text_138), app::sendQueuedMessage), new LinearLayout.LayoutParams(dp(40), dp(40)));
+    queuedBar.addView(icon("menu", UiText.get(R.string.main_text_139), this::showPendingQueue), new LinearLayout.LayoutParams(dp(40), dp(40)));
   }
 
   private void showPendingQueue() {
@@ -960,11 +960,11 @@ public final class MainActivity extends Activity {
 
   private void pickImage() {
     LinearLayout choices = column(); choices.setPadding(dp(20), 0, dp(20), dp(16));
-    TextView hint = text("图片可多选，也可通过文件管理器选择文档、压缩包等文件。每条消息最多 4 张图片和 8 个文件；文件每个最多 100 MiB。", 13, muted);
+    TextView hint = text(UiText.get(R.string.main_extra_7), 13, muted);
     hint.setPadding(dp(4), 0, dp(4), dp(12)); choices.addView(hint);
     Dialog[] holder = new Dialog[1];
-    choices.addView(action("项目提示词模板",()->{holder[0].dismiss();PromptTemplateDialog.show(this,app,input,fg,muted);}));
-    String[] labels = {"手机相册", "其他相册 / 图片 App", "系统选择器"};
+    choices.addView(action(UiText.get(R.string.main_text_140),()->{holder[0].dismiss();PromptTemplateDialog.show(this,app,input,fg,muted);}));
+    String[] labels = {UiText.get(R.string.main_text_141), UiText.get(R.string.main_text_142), UiText.get(R.string.main_text_143)};
     ImagePicker.Source[] sources = ImagePicker.Source.values();
     for (int i = 0; i < labels.length; i++) {
       ImagePicker.Source source = sources[i];
@@ -972,8 +972,8 @@ public final class MainActivity extends Activity {
       LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2); params.bottomMargin = dp(8);
       choices.addView(option, params);
     }
-    choices.addView(action("选择文件",()->{holder[0].dismiss();launchFilePicker();}));
-    holder[0] = sheet("添加附件", choices);
+    choices.addView(action(UiText.get(R.string.main_text_144),()->{holder[0].dismiss();launchFilePicker();}));
+    holder[0] = sheet(UiText.get(R.string.main_text_145), choices);
   }
 
   private String imageProject() {
@@ -982,26 +982,26 @@ public final class MainActivity extends Activity {
 
   private void launchImagePicker(ImagePicker.Source source) {
     if (!app.runtimeCapabilities.supports("attachments")) { toast(app.runtimeCapabilities.reason()); return; }
-    if (pendingImageGeneration >= 0) { toast("请先完成当前附件选择"); return; }
+    if (pendingImageGeneration >= 0) { toast(UiText.get(R.string.main_text_146)); return; }
     if (!app.canAttach() || app.profile == null) {toast(app.attachmentUnavailable()); return;}
     int remaining = app.remainingImages();
-    if (remaining <= 0) { toast("每条消息最多 " + MediaFiles.MAX_ATTACHMENTS + " 张图片"); return; }
+    if (remaining <= 0) { toast(UiText.get(R.string.main_extra_8) + MediaFiles.MAX_ATTACHMENTS + UiText.get(R.string.main_extra_9)); return; }
     pendingImageGeneration = app.connectionGeneration(); pendingImageHost = app.profile.id;
     pendingImageThread = app.threadId; pendingImageProject = imageProject();
     if (!ImagePicker.launch(this, source, remaining)) {
-      pendingImageGeneration = -1; toast("没有可用的图片选择器，请安装或启用相册 / 文件 App");
+      pendingImageGeneration = -1; toast(UiText.get(R.string.main_text_147));
     }
   }
 
   private void launchFilePicker() {
     if (!app.runtimeCapabilities.supports("attachments")) { toast(app.runtimeCapabilities.reason()); return; }
-    if (pendingImageGeneration >= 0) { toast("请先完成当前附件选择"); return; }
+    if (pendingImageGeneration >= 0) { toast(UiText.get(R.string.main_text_146)); return; }
     if(!app.canAttach() || app.profile==null){toast(app.attachmentUnavailable());return;}
     int remaining=app.remainingFiles();
-    if(remaining<=0){toast("每条消息最多 "+FileAttachment.MAX_FILES+" 个文件");return;}
+    if(remaining<=0){toast(UiText.get(R.string.main_extra_8)+FileAttachment.MAX_FILES+UiText.get(R.string.main_extra_10));return;}
     pendingImageGeneration=app.connectionGeneration();pendingImageHost=app.profile.id;
     pendingImageThread=app.threadId;pendingImageProject=imageProject();
-    if(!FilePicker.launch(this,remaining)){pendingImageGeneration=-1;toast("没有可用的文件管理器，请安装或启用文件 App");}
+    if(!FilePicker.launch(this,remaining)){pendingImageGeneration=-1;toast(UiText.get(R.string.main_text_148));}
   }
 
   private void addFileAttachment(FileAttachment file) {
@@ -1010,9 +1010,9 @@ public final class MainActivity extends Activity {
     LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(dp(210),dp(88));params.setMarginEnd(dp(8));
     attachmentStrip.addView(tile,params);
     TextView label=text(file.name+"\n"+android.text.format.Formatter.formatShortFileSize(this,file.size),13,fg);
-    label.setMaxLines(3);label.setEllipsize(TextUtils.TruncateAt.END);label.setContentDescription("待发送文件 "+file.name);
+    label.setMaxLines(3);label.setEllipsize(TextUtils.TruncateAt.END);label.setContentDescription(UiText.get(R.string.main_text_154)+file.name);
     tile.addView(label,new LinearLayout.LayoutParams(0,-2,1));
-    IconView remove=icon("close","移除文件 "+file.name,()->{
+    IconView remove=icon("close",UiText.get(R.string.main_text_155)+file.name,()->{
       if(app.steering || app.attaching || (app.busy && app.turnId.isEmpty()))return;
       app.draftFiles.remove(file);app.changed();
     });
@@ -1030,8 +1030,8 @@ public final class MainActivity extends Activity {
     for(FileAttachment file:new ArrayList<>(app.draftFiles))addFileAttachment(file);
     if (app.attaching) {
       if(!app.attachingFiles)addAttachmentPreview(app.pendingImagePreview, null, index + 1);
-      TextView uploading = text((app.attachingFiles?"文件上传中…":"图片上传中…") + (app.imageUploadCount > 1 ? "（" + app.imageUploadIndex + " / " + app.imageUploadCount + "）" : ""), 13, muted);
-      uploading.setContentDescription(app.attachingFiles?"文件上传中…":"图片上传中…"); attachmentStrip.addView(uploading);
+      TextView uploading = text((app.attachingFiles?UiText.get(R.string.main_text_149):UiText.get(R.string.main_text_150)) + (app.imageUploadCount > 1 ? "（" + app.imageUploadIndex + " / " + app.imageUploadCount + UiText.get(R.string.main_extra_18) : ""), 13, muted);
+      uploading.setContentDescription(app.attachingFiles?UiText.get(R.string.main_text_149):UiText.get(R.string.main_text_150)); attachmentStrip.addView(uploading);
     }
   }
 
@@ -1046,18 +1046,18 @@ public final class MainActivity extends Activity {
       ImageView preview = new ImageView(this);
       preview.setImageBitmap(bitmap);
       preview.setScaleType(ImageView.ScaleType.FIT_CENTER);
-      preview.setContentDescription("待发送图片 " + index);
+      preview.setContentDescription(UiText.get(R.string.main_text_151) + index);
       preview.setOnClickListener(v->{if(path!=null)openImage(path);else openImagePreview(bitmap);});PressFeedback.apply(preview,isDark());
       tile.addView(preview, new FrameLayout.LayoutParams(-1, -1));
     } else {
-      TextView label = text("图片 " + index, 12, muted);
+      TextView label = text(UiText.get(R.string.main_text_152) + index, 12, muted);
       label.setGravity(Gravity.CENTER);
-      label.setContentDescription("待发送图片 " + index);
+      label.setContentDescription(UiText.get(R.string.main_text_151) + index);
       if(path!=null){label.setOnClickListener(v->openImage(path));PressFeedback.apply(label,isDark());}
       tile.addView(label, new FrameLayout.LayoutParams(-1, -1));
     }
     if (path != null) {
-      IconView remove = icon("close", "移除图片 " + index, () -> {
+      IconView remove = icon("close", UiText.get(R.string.main_text_153) + index, () -> {
         if (app.steering || app.attaching || (app.busy && app.turnId.isEmpty())) return;
         app.draftImages.remove(path);
         app.draftImagePreviews.remove(path);
@@ -1080,21 +1080,29 @@ public final class MainActivity extends Activity {
   }
 
   private void openImagePreview(android.graphics.Bitmap preview) {
-    showImage(null,preview);
+    showImage(null,preview,java.util.Collections.emptyList());
+  }
+
+  private android.graphics.Bitmap imagePreview(String source) {
+    android.graphics.Bitmap preview=app.draftImagePreviews.get(source);
+    if(preview==null)for(MessageImageTile tile:mediaTiles)if(tile.source.equals(source)) {
+      preview=tile.cachedPreview();
+      if(preview==null && tile.loaded && tile.preview.getDrawable() instanceof android.graphics.drawable.BitmapDrawable)preview=((android.graphics.drawable.BitmapDrawable)tile.preview.getDrawable()).getBitmap();
+      if(preview!=null)break;
+    }
+    return preview;
   }
 
   private void openImage(String source) {
-    android.graphics.Bitmap preview=app.draftImagePreviews.get(source);
-    if(preview==null)for(MessageImageTile tile:mediaTiles)if(tile.source.equals(source) && tile.loaded && tile.preview.getDrawable() instanceof BitmapDrawable){preview=((BitmapDrawable)tile.preview.getDrawable()).getBitmap();break;}
-    showImage(source,preview);
+    showImage(source,imagePreview(source),MediaFiles.imageGallery(app.items,app.currentProject()));
   }
 
-  private void showImage(String source,android.graphics.Bitmap preview) {
+  private void showImage(String source,android.graphics.Bitmap preview,java.util.List<String> gallery) {
     if(imageDialog!=null)imageDialog.dismiss();
-    int generation=app.connectionGeneration();String host=app.profile==null?"":app.profile.id;
-    imageDialog=new ImageDialog(this,isDark(),source,preview,
+    int generation=app.connectionGeneration();String host=app.profile==null?"":app.profile.id,thread=app.threadId;
+    imageDialog=new ImageDialog(this,isDark(),source,preview,gallery,this::imagePreview,
         (path,out,active)->app.readMedia(path,out,MediaFiles.IMAGE_LIMIT,active),
-        ()->!isDestroyed() && generation==app.connectionGeneration() && host.equals(app.profile==null?"":app.profile.id),
+        ()->!isDestroyed() && generation==app.connectionGeneration() && host.equals(app.profile==null?"":app.profile.id) && thread.equals(app.threadId),
         this::saveMedia);
   }
 
@@ -1119,7 +1127,7 @@ public final class MainActivity extends Activity {
   private void openLink(String source) {
     if (source.startsWith("https://") || source.startsWith("http://")) {
       try { startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(source))); }
-      catch (ActivityNotFoundException e) { toast("没有可打开链接的浏览器"); }
+      catch (ActivityNotFoundException e) { toast(UiText.get(R.string.main_text_156)); }
     } else saveMedia(source);
   }
 
@@ -1127,7 +1135,7 @@ public final class MainActivity extends Activity {
     try {
       String resolved = source.startsWith("data:") || source.startsWith("https://") ? source
           : MediaFiles.remotePath(source, app.profile == null ? "" : app.profile.cwd);
-      if (pendingDownload.length() > 0) { toast("请先完成当前保存操作"); return; }
+      if (pendingDownload.length() > 0) { toast(UiText.get(R.string.main_text_157)); return; }
       pendingDownload = resolved;
       pendingDownloadHost = app.profile == null ? "" : app.profile.id;
       startActivityForResult(MediaFiles.saveIntent(resolved), 44);
@@ -1137,7 +1145,7 @@ public final class MainActivity extends Activity {
   private void copy(String s) {
     ((android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE))
         .setPrimaryClip(ClipData.newPlainText(getString(R.string.app_name), s));
-    toast("已复制");
+    toast(UiText.get(R.string.main_text_158));
   }
 
   private void toast(String s) {
@@ -1147,7 +1155,7 @@ public final class MainActivity extends Activity {
   private void showConnectionError() {
     String diagnostic = app.error.isEmpty() ? app.lastError : app.error;
     if (diagnostic.isEmpty()) {
-      toast("暂无错误记录");
+      toast(UiText.get(R.string.main_text_159));
       return;
     }
     TextView detail = text(diagnostic, 14, fg);
@@ -1156,11 +1164,11 @@ public final class MainActivity extends Activity {
     ScrollView sc = new ScrollView(this);
     sc.addView(detail);
     new AlertDialog.Builder(this)
-        .setTitle("连接信息")
+        .setTitle(UiText.get(R.string.main_text_160))
         .setView(sc)
-        .setNegativeButton("复制诊断", (d, w) -> copy(diagnostic))
+        .setNegativeButton(UiText.get(R.string.main_text_161), (d, w) -> copy(diagnostic))
         .setNeutralButton(
-            ConnectionSetupUi.canContinue(app, diagnostic) ? "关闭持久模式" : app.unsentText.isEmpty() ? null : "恢复消息",
+            ConnectionSetupUi.canContinue(app, diagnostic) ? UiText.get(R.string.main_text_162) : app.unsentText.isEmpty() ? null : UiText.get(R.string.main_text_163),
             (d, w) -> {
               if (ConnectionSetupUi.canContinue(app, diagnostic)) {
                 ConnectionSetupUi.continueWithoutPersistence(this, app); return;
@@ -1169,7 +1177,7 @@ public final class MainActivity extends Activity {
               input.setSelection(input.length());
               app.clearError();
             })
-        .setPositiveButton("知道了", (d, w) -> app.clearError())
+        .setPositiveButton(UiText.get(R.string.main_text_164), (d, w) -> app.clearError())
         .show();
   }
 
@@ -1180,7 +1188,7 @@ public final class MainActivity extends Activity {
 
   private String detailText(ChatItem item) {
     if (item.type.equals("reasoning")) return item.detail.trim().isEmpty()
-        ? (item.status.equals("inProgress") ? "正在等待思考摘要…" : "远端未提供此思考项的摘要。部分思考项可能没有可显示的摘要。") : item.detail;
+        ? (item.status.equals("inProgress") ? UiText.get(R.string.main_extra_11) : UiText.get(R.string.main_extra_12)) : item.detail;
     return item.text + (item.detail.isEmpty() ? "" : "\n\n" + item.detail);
   }
 
@@ -1193,11 +1201,11 @@ public final class MainActivity extends Activity {
     ScrollView s = new ScrollView(this);
     s.addView(detail);
     layout.addView(s, new LinearLayout.LayoutParams(-1, dp(380)));
-    layout.addView(action("复制", () -> {
+    layout.addView(action(UiText.get(R.string.main_text_8), () -> {
       ChatItem latest = currentItems.get(m.id);
       copy(detailText(latest == null ? m : latest));
     }));
-    Dialog dialog = sheet(m.type.equals("reasoning") ? "思考过程" : "执行详情", layout);
+    Dialog dialog = sheet(m.type.equals("reasoning") ? UiText.get(R.string.main_text_165) : UiText.get(R.string.main_text_166), layout);
     Runnable update = new Runnable() {
       public void run() {
         if (!dialog.isShowing()) return;
@@ -1306,11 +1314,11 @@ public final class MainActivity extends Activity {
 
   private void openDirectoryPicker() {
     if (!app.connected) {
-      toast("请先连接 SSH 主机");
+      toast(UiText.get(R.string.main_text_167));
       return;
     }
     if (!app.canSwitchConversation()) {
-      toast("正在恢复会话或上传附件，请稍候");
+      toast(UiText.get(R.string.main_text_168));
       return;
     }
     directoryPicker =
@@ -1328,7 +1336,7 @@ public final class MainActivity extends Activity {
   private void startNewChat() {
     returnToWorkPanel = false;
     if (app.connected && !app.canSwitchConversation()) {
-      toast("正在连接会话或上传附件，请稍候"); return;
+      toast(UiText.get(R.string.main_text_169)); return;
     }
     if (!app.connected) {
       showDrawer();
@@ -1345,7 +1353,7 @@ public final class MainActivity extends Activity {
   private void fillNavigation(LinearLayout nav, boolean modal) {
     if (nav == null) return;
     nav.removeAllViews();
-    TextView label = text("连接", 12, muted);
+    TextView label = text(UiText.get(R.string.main_text_14), 12, muted);
     label.setPadding(dp(4), dp(8), 0, dp(12));
     nav.addView(label);
     for (Profile p : app.vault.profiles) {
@@ -1372,14 +1380,14 @@ public final class MainActivity extends Activity {
           });
       r.addView(t, new LinearLayout.LayoutParams(0, -2, 1));
       r.addView(
-          icon("chevron", "编辑 " + p.title(), () -> editProfile(p, false)),
+          icon("chevron", UiText.get(R.string.main_extra_13) + p.title(), () -> editProfile(p, false)),
           new LinearLayout.LayoutParams(dp(44), dp(48)));
       nav.addView(r);
     }
-    TextView addConnection=action("＋ 添加 SSH 连接", () -> editProfile(new Profile(), true));
+    TextView addConnection=action(UiText.get(R.string.main_extra_14), () -> editProfile(new Profile(), true));
     addConnection.setText(AppIcons.label(this,addConnection.getText().toString(),"plus",null,fg,dp(18)));nav.addView(addConnection);
     if (app.connected && app.profile != null) {
-      nav.addView(action("⌨ 终端 · " + app.profile.user + "@" + app.profile.host, () -> {
+      nav.addView(action(UiText.get(R.string.main_extra_15) + app.profile.user + "@" + app.profile.host, () -> {
         if (drawer != null) drawer.dismiss();
         openTerminalDialog();
       }));
@@ -1390,7 +1398,7 @@ public final class MainActivity extends Activity {
         org.json.JSONObject watched = app.tuiThreads.optJSONObject(i);
         if (watched != null && watched.optBoolean("active")) tuiActive++;
       }
-      TextView tuiHeader = text("PC 终端会话（Codex TUI · 旁观" + (tuiActive > 0 ? " · 运行中 " + tuiActive : "") + "）", 12, muted);
+      TextView tuiHeader = text(UiText.get(R.string.main_extra_16) + (tuiActive > 0 ? UiText.get(R.string.main_extra_17) + tuiActive : "") + UiText.get(R.string.main_extra_18), 12, muted);
       tuiHeader.setPadding(dp(4), dp(28), 0, dp(12));
       nav.addView(tuiHeader);
       for (int i = 0; i < app.tuiThreads.length() && i < 20; i++) {
@@ -1399,8 +1407,8 @@ public final class MainActivity extends Activity {
         String tid = watched.optString("id");
         if (tid.isEmpty()) continue;
         String name = watched.optString("title", "").trim();
-        String tuiLabel = (watched.optBoolean("active") ? "▶ 运行中 · " : "○ 空闲 · ")
-            + (name.isEmpty() ? "会话 " + tid.substring(0, Math.min(8, tid.length())) : name);
+        String tuiLabel = (watched.optBoolean("active") ? UiText.get(R.string.main_extra_19) : UiText.get(R.string.main_extra_20))
+            + (name.isEmpty() ? UiText.get(R.string.main_extra_21) + tid.substring(0, Math.min(8, tid.length())) : name);
         TextView item = text(tuiLabel, 13, watched.optBoolean("active") ? fg : muted);
         item.setPadding(dp(8), dp(10), dp(8), dp(10));
         item.setMaxLines(1);
@@ -1409,7 +1417,7 @@ public final class MainActivity extends Activity {
             item,
             () -> {
               if (!app.canSwitchConversation()) {
-                toast("正在恢复会话或上传附件，请稍候");
+                toast(UiText.get(R.string.main_text_168));
                 return;
               }
               if (drawer != null) drawer.dismiss();
@@ -1418,20 +1426,20 @@ public final class MainActivity extends Activity {
         nav.addView(item);
       }
       if (app.tuiIdeIpc) {
-        TextView ide = text("检测到 IDE / 桌面 Codex IPC 通道", 12, muted);
+        TextView ide = text(UiText.get(R.string.main_extra_22), 12, muted);
         ide.setPadding(dp(8), dp(4), 0, dp(4));
         nav.addView(ide);
       }
     }
-    TextView history = text("最近的对话", 12, muted);
+    TextView history = text(UiText.get(R.string.main_text_170), 12, muted);
     history.setPadding(dp(4), dp(28), 0, dp(12));
     nav.addView(history);
     if (!app.connected) {
-      TextView note = text("连接电脑后查看历史对话", 13, muted);
+      TextView note = text(UiText.get(R.string.main_text_171), 13, muted);
       note.setPadding(dp(4), dp(4), 0, dp(16));
       nav.addView(note);
     } else if (app.threads.length() == 0) {
-      nav.addView(text("还没有对话", 13, muted));
+      nav.addView(text(UiText.get(R.string.main_text_172), 13, muted));
     }
     for (int i = 0; i < app.threads.length(); i++) {
       JSONObject t = app.threads.optJSONObject(i);
@@ -1439,7 +1447,7 @@ public final class MainActivity extends Activity {
       String id = t.optString("id");
       String name = t.isNull("name") ? "" : t.optString("name");
       if (name.trim().isEmpty()) name = t.optString("preview", "新对话");
-      TextView item = text(name.trim().isEmpty() ? "新对话" : name, 14, fg);
+      TextView item = text(name.trim().isEmpty() ? UiText.get(R.string.main_text_173) : name, 14, fg);
       item.setPadding(dp(8), dp(14), dp(8), dp(14));
       item.setMaxLines(2);
       item.setEllipsize(TextUtils.TruncateAt.END);
@@ -1448,7 +1456,7 @@ public final class MainActivity extends Activity {
           item,
           () -> {
             if (!app.canSwitchConversation()) {
-              toast("正在恢复会话或上传附件，请稍候"); return;
+              toast(UiText.get(R.string.main_text_168)); return;
             }
             app.draftText = input.getText().toString();
             if (modal && drawer != null) drawer.dismiss();
@@ -1456,17 +1464,17 @@ public final class MainActivity extends Activity {
           });
       // 左滑露出「删除」: 与远程控制列表一致的交互
       SwipeActionLayout swipe = new SwipeActionLayout(
-          this, item, dp(72), "删除", bg, () -> {
+          this, item, dp(72), UiText.get(R.string.main_text_4), bg, () -> {
             if (app.threadRunning(t)) {
-              toast("会话运行中，稍后再删"); return;
+              toast(UiText.get(R.string.main_text_174)); return;
             }
             new AlertDialog.Builder(this)
-                .setTitle("删除对话")
-                .setMessage("永久删除远端对话及消息，无法恢复。")
-                .setNegativeButton("取消", null)
-                .setPositiveButton("删除", (d, w) -> {
+                .setTitle(UiText.get(R.string.main_text_175))
+                .setMessage(UiText.get(R.string.main_text_176))
+                .setNegativeButton(UiText.get(R.string.main_text_1), null)
+                .setPositiveButton(UiText.get(R.string.main_text_4), (d, w) -> {
                   if (drawer != null) drawer.dismiss();
-                  app.deleteThread(id, err -> { if (err != null) toast("删除失败: " + err.getMessage()); });
+                  app.deleteThread(id, err -> { if (err != null) toast(UiText.get(R.string.main_text_177) + err.getMessage()); });
                 })
                 .show();
           });
@@ -1475,10 +1483,10 @@ public final class MainActivity extends Activity {
     if (app.connected) {
       nav.addView(
           action(
-              app.nextCursor.isEmpty() ? "刷新对话" : "加载更多",
+              app.nextCursor.isEmpty() ? UiText.get(R.string.main_text_178) : UiText.get(R.string.main_text_179),
               () -> app.refreshThreads(!app.nextCursor.isEmpty())));
     }
-    TextView theme = action("外观", () -> chooseTheme());
+    TextView theme = action(UiText.get(R.string.main_text_22), () -> chooseTheme());
     LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(-1, -2);
     tp.topMargin = dp(20);
     nav.addView(theme, tp);
@@ -1486,11 +1494,11 @@ public final class MainActivity extends Activity {
 
   /** Secondary menu keeps the primary standard: title-free, centered, 60% width. */
   private void chooseTheme() {
-    String[] modes = {"跟随系统", "浅色", "深色"};
+    String[] modes = {UiText.get(R.string.main_text_23), UiText.get(R.string.main_text_24), UiText.get(R.string.main_text_25)};
     int current = getPreferences(0).getInt("theme", 0);
     String[] labels = new String[modes.length];
     for (int i = 0; i < modes.length; i++) labels[i] = (i == current ? "✓ " : "") + modes[i];
-    CenteredMenu.show(this, fg, muted, "外观设置", labels, which -> {
+    CenteredMenu.show(this, fg, muted, UiText.get(R.string.main_text_21), labels, which -> {
       getPreferences(0).edit().putInt("theme", which).apply();
       recreate();
     });
@@ -1498,17 +1506,15 @@ public final class MainActivity extends Activity {
 
   /** Explicit top-right menu. Swiping left remains the work-panel shortcut. */
   private void showSettings() {
-    String[] options = {"外观设置", "文字大小", "后台设置", "添加连接", "当前连接", "应用沙箱"};
+    String[] options = {UiText.get(R.string.main_text_19), UiText.get(R.string.main_text_16), UiText.get(R.string.main_text_17), UiText.get(R.string.main_text_18)};
     String version;
     try { version=getPackageManager().getPackageInfo(getPackageName(),0).versionName; }
     catch (Exception e) { version=getString(R.string.app_name); }
     CenteredMenu.show(this,fg,muted,version,options,which -> {
-      if (which == 0) chooseTheme();
-      else if (which == 1) chooseFontSize();
-      else if (which == 2) backgroundSettings();
-      else if (which == 3) editProfile(new Profile(), true);
-      else if (which == 4) editCurrentProfile();
-      else if (which == 5) SandboxSettings.show(this);
+      if (which == 0) backgroundSettings();
+      else if (which == 1) editProfile(new Profile(), true);
+      else if (which == 2) editCurrentProfile();
+      else if (which == 3) SandboxSettings.show(this);
     });
   }
 
@@ -1535,14 +1541,14 @@ public final class MainActivity extends Activity {
   }
 
   private void chooseFontSize() {
-    float[] scales = {0, .9f, 1f, 1.15f, 1.3f};
-    String[] labels = {"跟随系统", "小", "标准", "大", "更大"};
+    float[] scales = {0, .75f, .9f, 1f, 1.15f, 1.3f};
+    String[] labels = {UiText.get(R.string.main_text_23), UiText.get(R.string.main_text_26), UiText.get(R.string.main_text_27), UiText.get(R.string.main_text_28), UiText.get(R.string.main_text_29), UiText.get(R.string.main_text_30)};
     float current = getSharedPreferences("display", MODE_PRIVATE).getFloat("fontScale", 0);
     int selected = 0;
     for (int i = 0; i < scales.length; i++) if (Math.abs(scales[i] - current) < .001f) selected = i;
     String[] rows = new String[labels.length];
     for (int i = 0; i < labels.length; i++) rows[i] = (i == selected ? "✓ " : "") + labels[i];
-    CenteredMenu.show(this, fg, muted, "文字大小", rows, which -> {
+    CenteredMenu.show(this, fg, muted, UiText.get(R.string.main_text_20), rows, which -> {
       getSharedPreferences("display", MODE_PRIVATE).edit().putFloat("fontScale", scales[which]).apply();
       recreate();
     });
@@ -1550,14 +1556,25 @@ public final class MainActivity extends Activity {
 
   private void backgroundSettings() {
     // Compact action menu: no long explanation wall; header hints the purpose.
-    CenteredMenu.show(this,fg,muted,null,new String[]{"电池设为不受限","通知与流体云","Tailscale"},which->{
+    CenteredMenu.show(this,fg,muted,null,new String[]{UiText.get(R.string.ui_battery_unrestricted),UiText.get(R.string.ui_notifications_and_live_activities),"Tailscale",UiText.get(R.string.ui_interface_language),UiText.get(R.string.main_text_21),UiText.get(R.string.main_text_20)},which->{
       if(which==0) {
         try { startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
             android.net.Uri.parse("package:" + getPackageName()))); }
-        catch (ActivityNotFoundException e) { toast("请在系统应用设置中打开 "+getString(R.string.app_name)); }
+        catch (ActivityNotFoundException e) { toast(UiText.get(R.string.main_text_188)+getString(R.string.app_name)); }
       } else if (which == 1) liveStatusSettings();
       else if (which == 2) TsnetSetup.show(this);
+      else if (which == 3) chooseLanguage();
+      else if (which == 4) chooseTheme();
+      else if (which == 5) chooseFontSize();
     });
+  }
+
+  private void chooseLanguage() {
+    String current=AppLanguage.preference(this);
+    String[] rows=new String[AppLanguage.TAGS.length];
+    for(int i=0;i<AppLanguage.TAGS.length;i++)
+      rows[i]=(AppLanguage.TAGS[i].equals(current)?"✓ ":"")+(i==0?UiText.get(R.string.ui_language_follow_system):AppLanguage.NAMES[i]);
+    CenteredMenu.show(this,fg,muted,null,rows,which->app.language.select(AppLanguage.TAGS[which]));
   }
 
   private void liveStatusSettings() {
@@ -1568,10 +1585,10 @@ public final class MainActivity extends Activity {
     String hint;
     if (Build.VERSION.SDK_INT >= 36) {
       boolean allowed = getSystemService(NotificationManager.class).canPostPromotedNotifications();
-      hint = allowed ? "" : "系统尚未允许实时通知";
-    } else hint = "本机将显示普通任务通知";
+      hint = allowed ? "" : UiText.get(R.string.main_text_180);
+    } else hint = UiText.get(R.string.main_text_181);
     CenteredMenu.show(this,fg,muted,hint,
-        new String[]{(on ? "✓ " : "") + "显示任务状态与审批流体云","打开系统通知设置"},
+        new String[]{(on ? "✓ " : "") + UiText.get(R.string.main_text_182),UiText.get(R.string.main_text_183)},
         which -> {
           if (which == 0) {
             prefs.edit().putBoolean("liveStatus", !on).apply();
@@ -1579,29 +1596,29 @@ public final class MainActivity extends Activity {
           } else {
             try { startActivity(new Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                 .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, getPackageName())); }
-            catch (ActivityNotFoundException e) { toast("请在系统设置中打开 "+getString(R.string.app_name)+" 的通知设置"); }
+            catch (ActivityNotFoundException e) { toast(UiText.get(R.string.main_text_190)+getString(R.string.app_name)+UiText.get(R.string.main_text_189)); }
           }
         });
   }
 
   private void conversationInfo() {
     String project = app.currentProject();
-    String details = "项目：" + (project.isEmpty() ? "远端默认目录（未返回路径）" : project)
-        + "\n\n对话：" + (app.threadTitle.isEmpty() ? "新对话" : app.threadTitle)
-        + "\n\n对话 ID：" + (app.threadId.isEmpty() ? "发送首条消息后创建" : app.threadId)
-        + "\n\n状态：" + (!app.connected ? "未连接" : app.readOnly ? "只读，可尝试接续" : app.busy ? "正在处理" : "可继续对话");
-    new AlertDialog.Builder(this).setTitle("当前项目与对话").setMessage(details)
-        .setPositiveButton("关闭", null)
-        .setNeutralButton("复制", (d, w) -> {
+    String details = UiText.get(R.string.main_extra_23) + (project.isEmpty() ? UiText.get(R.string.main_extra_24) : project)
+        + UiText.get(R.string.main_extra_25) + (app.threadTitle.isEmpty() ? UiText.get(R.string.main_text_173) : app.threadTitle)
+        + UiText.get(R.string.main_extra_26) + (app.threadId.isEmpty() ? UiText.get(R.string.main_extra_27) : app.threadId)
+        + UiText.get(R.string.main_extra_28) + (!app.connected ? UiText.get(R.string.main_text_185) : app.readOnly ? UiText.get(R.string.main_text_186) : app.busy ? UiText.get(R.string.main_extra_4) : UiText.get(R.string.main_text_187));
+    new AlertDialog.Builder(this).setTitle(UiText.get(R.string.main_text_184)).setMessage(details)
+        .setPositiveButton(UiText.get(R.string.main_text_2), null)
+        .setNeutralButton(UiText.get(R.string.main_text_8), (d, w) -> {
           android.content.ClipboardManager clipboard = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-          clipboard.setPrimaryClip(android.content.ClipData.newPlainText("当前项目与对话", details));
-          toast("已复制");
+          clipboard.setPrimaryClip(android.content.ClipData.newPlainText(UiText.get(R.string.main_text_184), details));
+          toast(UiText.get(R.string.main_text_158));
         }).show();
   }
 
   private void openTerminalDialog() {
     if (!app.connected) {
-      toast("请先连接 SSH 主机");
+      toast(UiText.get(R.string.main_text_167));
       return;
     }
     TextView output = new TextView(this);
@@ -1616,13 +1633,13 @@ public final class MainActivity extends Activity {
     scroll.addView(output);
     scroll.setBackgroundColor(0xff101014);
     android.widget.EditText input = new android.widget.EditText(this);
-    input.setHint("$ 输入命令，回车或点发送");
+    input.setHint(UiText.get(R.string.main_extra_29));
     input.setSingleLine(true);
     input.setTypeface(android.graphics.Typeface.MONOSPACE);
     input.setTextColor(fg);
     input.setHintTextColor(muted);
     android.widget.Button send = new android.widget.Button(this);
-    send.setText("发送");
+    send.setText(UiText.get(R.string.main_text_9));
     android.widget.LinearLayout bar = new android.widget.LinearLayout(this);
     bar.addView(input, new android.widget.LinearLayout.LayoutParams(0, -2, 1));
     bar.addView(send, new android.widget.LinearLayout.LayoutParams(-2, -2));
@@ -1632,9 +1649,9 @@ public final class MainActivity extends Activity {
     root.addView(bar, new android.widget.LinearLayout.LayoutParams(-1, -2));
     AlertDialog dialog =
         new AlertDialog.Builder(this)
-            .setTitle("终端 · " + app.profile.user + "@" + app.profile.host)
+            .setTitle(UiText.get(R.string.main_extra_30) + app.profile.user + "@" + app.profile.host)
             .setView(root)
-            .setPositiveButton("关闭", null)
+            .setPositiveButton(UiText.get(R.string.main_text_2), null)
             .create();
     java.util.function.Consumer<String> update =
         text -> {
@@ -1666,16 +1683,16 @@ public final class MainActivity extends Activity {
     dialog.setOnDismissListener(d -> app.closeTerminal());
     dialog.show();
     dialog.getWindow().setLayout(-1, dp(560));
-    app.openTerminal(update, e -> toast("终端不可用：" + e.getMessage()));
+    app.openTerminal(update, e -> toast(UiText.get(R.string.main_extra_31) + e.getMessage()));
   }
 
   private void pickTerminalHistory(android.widget.EditText input) {
     if (app.terminal.history.isEmpty()) {
-      toast("暂无历史命令");
+      toast(UiText.get(R.string.main_extra_32));
       return;
     }
     String[] items = app.terminal.history.toArray(new String[0]);
-    CenteredMenu.show(this, fg, muted, "历史命令（长按输入框呼出）", items,
+    CenteredMenu.show(this, fg, muted, UiText.get(R.string.main_extra_33), items,
         which -> input.setText(items[which]));
   }
 
@@ -1700,7 +1717,7 @@ public final class MainActivity extends Activity {
     if (usageDialog != null) usageDialog.dismiss();
     usageDialog =
         CenteredMenu.show(
-            this, fg, muted, usageHeaderText(), new String[] {"刷新"}, which -> usageInfo(true),
+            this, fg, muted, usageHeaderText(), new String[] {UiText.get(R.string.main_text_10)}, which -> usageInfo(true),
             view -> usageHeader = view);
     AlertDialog ownedUsageDialog = usageDialog;
     usageDialog.setOnDismissListener(
@@ -1716,9 +1733,10 @@ public final class MainActivity extends Activity {
   private String usageHeaderText() {
     String summary = app.usage.summary();
     if (summary.startsWith("剩余用量 · ")) summary = summary.substring("剩余用量 · ".length());
-    StringBuilder header = new StringBuilder("剩余用量\n").append(summary);
-    header.append("\n\n").append(app.usage.loading ? "正在读取剩余用量…" : app.usage.details());
-    if (!app.usage.error.isEmpty()) header.append("\n\n点“刷新”重试");
+    else if (summary.startsWith("Remaining usage · ")) summary = summary.substring("Remaining usage · ".length());
+    StringBuilder header = new StringBuilder(UiText.get(R.string.main_extra_34)).append(summary);
+    header.append("\n\n").append(app.usage.loading ? UiText.get(R.string.main_extra_35) : app.usage.details());
+    if (!app.usage.error.isEmpty()) header.append(UiText.get(R.string.main_extra_36));
     return header.toString();
   }
 
@@ -1730,19 +1748,19 @@ public final class MainActivity extends Activity {
     new AlertDialog.Builder(this)
         .setTitle(app.profile.title())
         .setMessage(
-            app.profile.user + "@" + app.profile.host + ":" + app.profile.port + "\n" + app.state)
-        .setPositiveButton("返回", null)
-        .setNeutralButton("编辑连接", (d, w) -> editProfile(app.profile, false))
-        .setNegativeButton("断开连接", (d, w) -> app.disconnectAll(this))
+            app.profile.user + "@" + app.profile.host + ":" + app.profile.port + "\n" + ConnectionDisplay.state(app.state, UiText.locale()))
+        .setPositiveButton(UiText.get(R.string.main_text_7), null)
+        .setNeutralButton(UiText.get(R.string.main_text_15), (d, w) -> editProfile(app.profile, false))
+        .setNegativeButton(UiText.get(R.string.main_text_205), (d, w) -> app.disconnectAll(this))
         .show();
   }
 
   private void connectProfile(Profile p) {
     if ((app.connected || app.connecting) && app.profile != null && app.profile.id.equals(p.id)) return;
     if (app.attaching || app.attachingFiles || activeMediaDownloads > 0 || SftpContent.hasActiveOperations()) {
-      toast("文件正在传输，请完成后再切换连接"); return;
+      toast(UiText.get(R.string.main_text_191)); return;
     }
-    if (app.connecting) { toast("正在连接，请稍后再切换"); return; }
+    if (app.connecting) { toast(UiText.get(R.string.main_text_192)); return; }
     boolean changing = app.profile != null && !app.profile.id.equals(p.id);
     boolean attention = app.remoteRunning || (app.busy && !app.readOnly) || !app.approvals.isEmpty()
         || TurnController.of(app).hasPendingForCurrentProfile();
@@ -1750,18 +1768,18 @@ public final class MainActivity extends Activity {
       attention |= task.remoteRunning || (task.busy && !task.readOnly) || !task.approvals.isEmpty();
     boolean attachments = !app.draftImages.isEmpty() || !app.draftFiles.isEmpty();
     if (changing && (attention || attachments)) {
-      new AlertDialog.Builder(this).setTitle("切换连接？")
-          .setMessage("切换后暂时无法查看或处理原连接的任务；远端是否继续取决于持久会话。待发队列会暂停，不会发送到新连接。" +
-              (attachments ? "\n当前未发送附件将清除，请切回后重新选择。" : ""))
-          .setNegativeButton("取消",null)
-          .setPositiveButton("切换",(d,w)->switchConnection(p)).show();
+      new AlertDialog.Builder(this).setTitle(UiText.get(R.string.main_text_193))
+          .setMessage(UiText.get(R.string.main_text_194) +
+              (attachments ? UiText.get(R.string.main_extra_37) : ""))
+          .setNegativeButton(UiText.get(R.string.main_text_1),null)
+          .setPositiveButton(UiText.get(R.string.main_text_11),(d,w)->switchConnection(p)).show();
     } else switchConnection(p);
   }
 
   private void switchConnection(Profile p) {
     // Recheck after the confirmation: a file operation may have started meanwhile.
     if(app.attaching || app.attachingFiles || activeMediaDownloads > 0 || SftpContent.hasActiveOperations() || app.connecting) {
-      toast("当前操作尚未完成，请稍后切换"); return;
+      toast(UiText.get(R.string.main_text_195)); return;
     }
     if (!p.tailscaleSsh && p.password.isEmpty() && p.privateKey.isEmpty()) {
       editProfile(p,false); return;
@@ -1816,7 +1834,7 @@ public final class MainActivity extends Activity {
       if (result == RESULT_OK && data != null) {
         List<android.net.Uri> selected = ImagePicker.selected(data);
         if (!selected.isEmpty()) {
-          if (!sameContext) toast("连接或对话已改变，请在当前对话重新选择附件");
+          if (!sameContext) toast(UiText.get(R.string.main_text_196));
           else if(request==FilePicker.REQUEST)app.attachFiles(selected);
           else app.attachImages(selected);
         }
@@ -1825,13 +1843,13 @@ public final class MainActivity extends Activity {
     }
     if (request == TsnetVpnService.VPN_REQUEST) {
       if (result == RESULT_OK) SandboxSettings.start(this);
-      else toast("未授予网络权限，沙箱未启用");
+      else toast(UiText.get(R.string.main_text_197));
       return;
     }
     if (request == 46) {
       String[] p = pendingSftpSave; pendingSftpSave = null;
       if (p == null || result != RESULT_OK || data == null || data.getData() == null) return;
-      if (app == null) { toast("连接已断开，下载取消"); return; }
+      if (app == null) { toast(UiText.get(R.string.main_text_198)); return; }
       SftpDownloadDialog.start(this, app, p[0], p[1], Long.parseLong(p[2]), data.getData());
       return;
     }
@@ -1840,17 +1858,17 @@ public final class MainActivity extends Activity {
       pendingDownload = "";
       if (result == RESULT_OK && data != null && data.getData() != null && !source.isEmpty()) {
         android.net.Uri destination = data.getData();
-        toast("正在保存文件…");
+        toast(UiText.get(R.string.main_text_199));
         activeMediaDownloads++;
         mediaWorker.execute(() -> {
           try (OutputStream out = getContentResolver().openOutputStream(destination, "wt")) {
-            if (out == null) throw new IOException("无法写入所选位置");
-            if (app.profile == null || !host.equals(app.profile.id)) throw new IOException("连接已切换，请重新下载");
+            if (out == null) throw new IOException(UiText.get(R.string.main_text_200));
+            if (app.profile == null || !host.equals(app.profile.id)) throw new IOException(UiText.get(R.string.main_text_201));
             app.readMedia(source, out, MediaFiles.DOWNLOAD_LIMIT);
-            app.main.post(() -> toast("文件已保存"));
+            app.main.post(() -> toast(UiText.get(R.string.main_text_202)));
           } catch (Exception e) {
             try { android.provider.DocumentsContract.deleteDocument(getContentResolver(), destination); } catch (Exception ignored) { }
-            app.main.post(() -> toast("保存失败：" + ConnectionFailure.reason(e)));
+            app.main.post(() -> toast(UiText.get(R.string.main_text_203) + ConnectionFailure.reason(e)));
           } finally { app.main.post(() -> activeMediaDownloads--); }
         });
       }
@@ -1874,30 +1892,30 @@ public final class MainActivity extends Activity {
     String target = version.latest;
     // Compact menu standard: version facts live in the small header, one short
     // hint line replaces the old explanation wall, actions are centered rows.
-    String header = "Codex 版本"
-        + "\n会话 " + (version.running.isEmpty() ? "未知" : version.running)
-        + " · 已安装 " + (version.installed.isEmpty() ? "未知" : version.installed)
-        + " · 最新 " + (target.isEmpty() ? "尚未获取" : target);
+    String header = UiText.get(R.string.main_extra_38)
+        + UiText.get(R.string.main_extra_39) + (version.running.isEmpty() ? UiText.get(R.string.main_extra_40) : version.running)
+        + UiText.get(R.string.main_extra_41) + (version.installed.isEmpty() ? UiText.get(R.string.main_extra_40) : version.installed)
+        + UiText.get(R.string.main_extra_42) + (target.isEmpty() ? UiText.get(R.string.main_extra_43) : target);
     if (!version.reason.isEmpty()) header += "\n" + version.reason;
     if (!version.error.isEmpty()) header += "\n" + version.error;
-    if (version.checking) header += "\n正在检查更新";
-    else if (version.updating) header += "\n正在更新，请保持连接";
-    else if (version.needsRestart()) header += "\n新版已安装，重启后启用（会停止进行中的对话）";
-    else if (version.canUpdate()) header += "\n空闲时自动启用新版；运行中的任务完成后生效";
+    if (version.checking) header += UiText.get(R.string.main_extra_44);
+    else if (version.updating) header += UiText.get(R.string.main_extra_45);
+    else if (version.needsRestart()) header += UiText.get(R.string.main_extra_46);
+    else if (version.canUpdate()) header += UiText.get(R.string.main_extra_47);
     java.util.List<String> rows = new java.util.ArrayList<>();
     java.util.List<Runnable> actions = new java.util.ArrayList<>();
     if (version.canUpdate()) {
-      rows.add("更新至 " + target);
+      rows.add(UiText.get(R.string.main_extra_48) + target);
       actions.add(() -> app.updateRemoteVersion(version, target));
     } else if (version.needsRestart()) {
-      rows.add("重启并启用新版");
+      rows.add(UiText.get(R.string.main_extra_49));
       actions.add(() -> confirmRemoteRestart(version));
     }
     if (!version.checking && !version.updating) {
-      rows.add("重新检查");
+      rows.add(UiText.get(R.string.main_extra_50));
       actions.add(() -> app.checkRemoteVersion(true));
     }
-    rows.add("关闭");
+    rows.add(UiText.get(R.string.main_text_2));
     actions.add(() -> {});
     versionDialog = CenteredMenu.show(this, fg, muted, header, rows.toArray(new String[0]),
         which -> actions.get(which).run());
@@ -1907,11 +1925,11 @@ public final class MainActivity extends Activity {
   private void confirmRemoteRestart(RemoteVersion version) {
     if (!app.connected || version != app.remoteVersion || !version.needsRestart()) return;
     new AlertDialog.Builder(this)
-        .setTitle("停止任务并重启？")
-        .setMessage("重启将立即停止这台远端电脑上由 LanGPT 托管的所有进行中对话和待处理审批。未完成的回复会中断。\n\n重启后 App 会自动重新连接，并使用已安装的 Codex "
+        .setTitle(UiText.get(R.string.main_extra_51))
+        .setMessage(UiText.get(R.string.main_extra_52)
             + version.installed + "。")
-        .setNegativeButton("取消", null)
-        .setPositiveButton("停止任务并重启", (d, w) -> app.restartRemoteVersion(version))
+        .setNegativeButton(UiText.get(R.string.main_text_1), null)
+        .setPositiveButton(UiText.get(R.string.main_extra_53), (d, w) -> app.restartRemoteVersion(version))
         .show();
   }
 
@@ -1926,14 +1944,14 @@ public final class MainActivity extends Activity {
       String fingerprint = app.trustFingerprint;
       trustDialog =
           new AlertDialog.Builder(this)
-              .setTitle("首次连接此主机")
+              .setTitle(UiText.get(R.string.main_text_206))
               .setMessage(
                   app.trustHost
-                      + "\n\n主机指纹\n"
+                      + UiText.get(R.string.main_extra_54)
                       + fingerprint
-                      + "\n\n请与服务器上的 SSH 主机指纹核对。信任后会记住此主机，密钥变化时拒绝连接。")
-              .setNegativeButton("取消", (d, w) -> app.trust(false))
-              .setPositiveButton("信任并连接", (d, w) -> app.trust(true))
+                      + UiText.get(R.string.main_extra_55))
+              .setNegativeButton(UiText.get(R.string.main_text_1), (d, w) -> app.trust(false))
+              .setPositiveButton(UiText.get(R.string.main_text_207), (d, w) -> app.trust(true))
               .setOnCancelListener(d -> app.trust(false))
               .show();
     }
@@ -1957,14 +1975,14 @@ public final class MainActivity extends Activity {
       return;
     }
     String description =
-        p.optString("reason", "远端请求执行以下操作")
+        p.optString("reason", UiText.get(R.string.main_text_215))
             + "\n\n"
-            + p.optString("command", p.optString("grantRoot", "文件修改"))
+            + p.optString("command", p.optString("grantRoot", UiText.get(R.string.main_text_216)))
             + "\n"
             + p.optString("cwd")
-            + "\n会话："
+            + UiText.get(R.string.main_extra_56)
             + p.optString("threadId");
-    if (p.has("networkApprovalContext")) description += "\n网络访问：" + p.opt("networkApprovalContext");
+    if (p.has("networkApprovalContext")) description += UiText.get(R.string.main_text_217) + p.opt("networkApprovalContext");
     for (ChatItem item : app.items)
       if (item.id.equals(p.optString("itemId")) && !item.detail.isEmpty())
         description += "\n\n" + item.detail;
@@ -1975,19 +1993,19 @@ public final class MainActivity extends Activity {
     sc.addView(details);
     approvalDialog =
         new AlertDialog.Builder(this)
-            .setTitle("需要你的确认")
+            .setTitle(UiText.get(R.string.main_text_208))
             .setView(sc)
             .setCancelable(false)
-            .setNeutralButton(app.forcedApprovals.canOffer(req) ? "全部允许(强制)" : null, null)
+            .setNeutralButton(app.forcedApprovals.canOffer(req) ? UiText.get(R.string.main_text_209) : null, null)
             .setNegativeButton(
-                "拒绝",
+                UiText.get(R.string.main_text_210),
                 (d, w) -> {
                   app.answer(req, Json.obj("decision", "decline"));
                   approvalDialog = null;
                   shownApproval = "";
                 })
             .setPositiveButton(
-                "允许一次",
+                UiText.get(R.string.main_text_211),
                 (d, w) -> {
                   app.answer(req, Json.obj("decision", "accept"));
                   approvalDialog = null;
@@ -2010,17 +2028,17 @@ public final class MainActivity extends Activity {
     sc.addView(form);
     approvalDialog =
         new AlertDialog.Builder(this)
-            .setTitle("补充信息")
+            .setTitle(UiText.get(R.string.main_text_212))
             .setView(sc)
             .setCancelable(false)
             .setNegativeButton(
-                ConversationJournal.savedQuestion(req) ? "不回答" : "停止任务",
+                ConversationJournal.savedQuestion(req) ? UiText.get(R.string.main_text_213) : UiText.get(R.string.main_text_214),
                 (d, w) -> {
                   app.cancelQuestion(req);
                   approvalDialog = null;
                   shownApproval = "";
                 })
-            .setPositiveButton("发送", null)
+            .setPositiveButton(UiText.get(R.string.main_text_9), null)
             .show();
     AlertDialog dialog=(AlertDialog) approvalDialog;
     android.widget.Button sendAnswer=dialog.getButton(AlertDialog.BUTTON_POSITIVE);

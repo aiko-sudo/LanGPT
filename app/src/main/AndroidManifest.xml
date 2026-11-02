@@ -20,8 +20,8 @@
         </activity>
         <provider android:name=".CacheFileProvider" android:authorities="${applicationId}.files"
             android:exported="false" android:grantUriPermissions="true"/>
-        <activity android:name=".SshTerminalActivity" android:hardwareAccelerated="true" android:exported="false" android:windowSoftInputMode="adjustResize" android:configChanges="keyboardHidden|orientation|screenSize|keyboard" android:enableOnBackInvokedCallback="false" />
-        <activity android:name=".SftpFileActivity" android:exported="false" android:windowSoftInputMode="adjustResize" android:configChanges="keyboardHidden|orientation|screenSize" android:enableOnBackInvokedCallback="true" />
+        <activity android:name=".SshTerminalActivity" android:hardwareAccelerated="true" android:exported="false" android:windowSoftInputMode="adjustResize" android:configChanges="keyboardHidden|orientation|screenSize|keyboard|locale|layoutDirection" android:enableOnBackInvokedCallback="false" />
+        <activity android:name=".SftpFileActivity" android:exported="false" android:windowSoftInputMode="adjustResize" android:configChanges="keyboardHidden|orientation|screenSize|locale|layoutDirection" android:enableOnBackInvokedCallback="true" />
         <activity android:name=".BubbleActivity" android:exported="false" android:resizeableActivity="true" android:allowEmbedded="true" android:documentLaunchMode="always" />
         <receiver android:name=".LiveActionReceiver" android:exported="false" />
         <service android:name=".ConnectionService" android:exported="false" android:foregroundServiceType="specialUse">

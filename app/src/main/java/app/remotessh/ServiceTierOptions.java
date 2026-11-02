@@ -5,6 +5,14 @@ import org.json.*;
 
 /** Picker capabilities come from the connected model catalog, never a model-name allowlist. */
 final class ServiceTierOptions {
+  private static volatile java.util.function.Supplier<Locale> localeProvider = Locale::getDefault;
+  static void setLocaleProvider(java.util.function.Supplier<Locale> provider) {
+    localeProvider = provider == null ? Locale::getDefault : provider;
+  }
+  private static boolean chinese() {
+    Locale locale = localeProvider.get();
+    return locale == null || !"en".equals(locale.getLanguage());
+  }
   static final String STANDARD = "default";
   static List<JSONObject> tiers(JSONObject model) {
     Map<String, JSONObject> result = new LinkedHashMap<>();
@@ -39,14 +47,15 @@ final class ServiceTierOptions {
     return "";
   }
   static String label(String id, JSONObject model) {
-    if (id.isEmpty()) return "远端默认";
-    if (id.equals(STANDARD)) return "普通";
+    boolean zh = chinese();
+    if (id.isEmpty()) return zh ? "远端默认" : "Remote default";
+    if (id.equals(STANDARD)) return zh ? "普通" : "Standard";
     String supported = supportedId(model, id);
     for (JSONObject tier : tiers(model)) if (tier.optString("id").equals(supported)) {
       String name = tier.isNull("name") ? "" : tier.optString("name").trim();
       if (!name.isEmpty()) return name;
     }
-    if (isFast(id)) return "快速";
+    if (isFast(id)) return zh ? "快速" : "Fast";
     return id;
   }
   static String description(String id, JSONObject model) {

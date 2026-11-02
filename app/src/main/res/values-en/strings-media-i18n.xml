@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="media_zoom">Pinch to zoom · Double-tap to zoom/reset</string>
+  <string name="media_swipe">\u0020· Swipe to browse images</string>
+  <string name="media_close">Close</string>
+  <string name="media_save_image">Save image</string>
+  <string name="media_context_changed">Connection or conversation changed. Reopen the image to save it.</string>
+  <string name="media_large_loading">Loading full image…</string>
+  <string name="media_image_failed">Image failed to load · Tap to retry</string>
+  <string name="media_image_description">Message image, tap to view full size</string>
+  <string name="media_image_deferred">Image · Scroll here to load</string>
+  <string name="media_image_loading">Loading image…</string>
+  <string name="media_text">Text</string>
+  <string name="media_copy">Copy</string>
+  <string name="media_copy_block">Copy content block %1$d</string>
+  <string name="media_copyable_block">Copyable content block %1$d</string>
+  <string name="media_pick_failed">Unable to open the save location picker</string>
+  <string name="media_download_prepare">Preparing download…</string>
+  <string name="media_cancel">Cancel</string>
+  <string name="media_download_cancelled">Download cancelled</string>
+  <string name="media_backup_failed">Unable to back up the destination; stopped to protect the original file</string>
+  <string name="media_write_failed">Unable to write to the selected location</string>
+  <string name="media_saved">Saved: %1$s</string>
+  <string name="media_restore_failed_short">Unable to restore</string>
+  <string name="media_restore_failed">Writing and automatic restore failed. Check the destination; a backup remains in app cache.</string>
+  <string name="media_cancelled">Download cancelled</string>
+  <string name="media_download_failed">Download failed: %1$s</string>
+</resources>

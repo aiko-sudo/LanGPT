@@ -33,7 +33,7 @@ def encode(value):
 def proxy_env():
     """Optional host-side proxy for the agent backend (e.g. chatgpt.com).
 
-    The PC owner opts in by writing a URL like http://127.0.0.1:7890 into
+    The PC owner opts in by writing a URL like http://192.168.2.2:7897 into
     ~/.codex/proxy.env. The file is read each time a backend process starts,
     so changing or emptying it needs no app update. Only unset variables are
     filled, never overriding an explicitly exported proxy.

@@ -59,8 +59,6 @@ function createTerminal() {
   installTouchSelection();
 }
 createTerminal();
-term.write('支持 -p 端口\r\n/help 命令帮助\r\n/saved 已存凭证\r\n' +
-  '/forget user@host 删除凭证\r\n输入 ssh user@host 连接\r\n-------------------------\r\n');
 window.terminalBytes = (encoded, id) => {
   const raw = atob(encoded);
   const bytes = Uint8Array.from(raw, c => c.charCodeAt(0));

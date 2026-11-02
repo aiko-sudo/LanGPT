@@ -21,8 +21,8 @@ def main() -> None:
 
     # 2) An existing target is backed up and restored when the copy fails.
     assert 'File.createTempFile("backup-",".part",dir)' in viewer, "existing target must be backed up"
-    assert "已自动还原原文件" in viewer, "failure path must restore the backup"
-    assert "所选文档未被修改" in viewer, "pre-existing target untouched when download itself fails"
+    assert 'restored?UiText.get(R.string.work_text_049)' in viewer and 'out.flush();restored=true;' in viewer, "failure path must restore the backup"
+    assert 'UiText.get(R.string.work_text_051)' in viewer, "pre-existing target untouched when download itself fails"
 
     # 3) Drafts: recreation restores the draft; stop persists; save clears;
     #    fresh open offers explicit recovery.
@@ -31,7 +31,7 @@ def main() -> None:
     assert "drafts.save(DraftStore.key(profile,path)" in viewer, "onStop must persist the draft"
     assert "drafts.clear(DraftStore.key(profile,path));" in viewer, "successful save must clear the draft"
     assert "offerDraftRecovery();" in viewer, "fresh open must offer leftover draft recovery"
-    assert "发现未保存的本地草稿" in viewer
+    assert "UiText.get(R.string.work_text_022)" in viewer
     drafts = (SRC / "DraftStore.java").read_text()
     assert "class DraftStore" in drafts and "MAGIC" in drafts and "renameTo" in drafts, \
         "draft store must write atomically"

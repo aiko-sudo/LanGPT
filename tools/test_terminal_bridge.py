@@ -14,6 +14,7 @@ import testdeps
 
 ROOT = Path(__file__).resolve().parents[1]
 STUBS = {
+    'app/remotessh/AppLanguage.java': 'package app.remotessh; class AppLanguage { static java.util.Locale locale(android.app.Activity a) { return java.util.Locale.ENGLISH; } }',
     'android/annotation/SuppressLint.java': 'package android.annotation; public @interface SuppressLint { String[] value(); }',
     'android/webkit/JavascriptInterface.java': 'package android.webkit; public @interface JavascriptInterface {}',
     'android/graphics/Bitmap.java': 'package android.graphics; public class Bitmap {}',
@@ -51,13 +52,13 @@ STUBS = {
     }''',
     'android/webkit/WebView.java': '''package android.webkit; public class WebView {
       public final WebSettings settings=new WebSettings(); public WebViewClient client; public Object bridge;
-      public String url; public volatile String script=""; public boolean removed,destroyed;
+      public String url; public volatile String script=""; public java.util.List<String> scripts=new java.util.ArrayList<>(); public boolean removed,destroyed;
       public WebView(android.app.Activity a){} public void setBackgroundColor(int c){}
       public WebSettings getSettings(){return settings;} public void setWebViewClient(WebViewClient c){client=c;}
       public void addJavascriptInterface(Object o,String n){bridge=o;}
       public void removeJavascriptInterface(String n){removed=true;}
       public void loadUrl(String s){url=s;client.onPageStarted(this,s,null);} public String getUrl(){return url;}
-      public void evaluateJavascript(String s,Object callback){script=s;}
+      public void evaluateJavascript(String s,Object callback){script=s;scripts.add(s);}
       public void stopLoading(){} public void destroy(){destroyed=true;}
     }''',
     'app/remotessh/BridgeHarness.java': r'''package app.remotessh;
@@ -88,6 +89,7 @@ public class BridgeHarness {
       check(v.client.shouldOverrideUrlLoading(v,url),"deny navigation");
     }
     w.status("local <script>\"\\\n"); bridge.ready();
+    check(v.scripts.get(0).contains("Supports -p port") && v.scripts.get(0).contains("/help"), "English banner precedes queued status");
     check(v.script.startsWith("terminalStatus(") && v.script.endsWith(")") && !v.script.contains("\n"),"quoted local text");
     String literal=v.script.substring("terminalStatus(".length(),v.script.length()-1);
     check(new org.json.JSONTokener(literal).nextValue().equals("local <script>\"\\\r\n"),"local text roundtrip");
@@ -143,6 +145,7 @@ class TerminalBridgeBehaviorTest(unittest.TestCase):
                 path.write_text(text)
             sources = list(map(str, work.rglob('*.java')))
             sources.append(str(ROOT / 'app/src/main/java/app/remotessh/TerminalWebView.java'))
+            sources.append(str(ROOT / 'app/src/main/java/app/remotessh/TerminalText.java'))
             subprocess.run(['javac', '-encoding', 'UTF-8', '-cp', jar, '-d', str(work), *sources], check=True)
             subprocess.run(['java', '-cp', str(work) + os.pathsep + jar, 'app.remotessh.BridgeHarness'],
                            cwd=ROOT, check=True)

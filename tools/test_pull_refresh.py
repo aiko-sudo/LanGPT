@@ -38,7 +38,7 @@ public class PullRefreshTest {
         subprocess.run(['java','-cp',str(folder),'app.remotessh.PullRefreshTest'],check=True)
     browser = (SRC/'RemoteBrowser.java').read_text()
     activity = (SRC/'MainActivity.java').read_text()
-    assert 'new String[] {"SFTP", "SSH 终端", "独立工作区"}' in browser and 'actions.sftp(' in browser
+    assert 'new String[] {"SFTP", UiText.get(R.string.work_text_116), UiText.get(R.string.work_text_117)}' in browser and 'actions.sftp(' in browser
     assert '刷新项目与对话' not in browser
     assert 'this::refreshByPull' in browser and 'app.refreshThreads(false,' in browser
     main_menu = activity.split('private void showMainMenu()',1)[1].split('private void chatMenu()',1)[0]

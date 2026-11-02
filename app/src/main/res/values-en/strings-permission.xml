@@ -1,0 +1,13 @@
+<resources>
+    <string name="permission_language">en</string>
+    <string name="permission_inherit_conversation">Use current conversation permissions</string>
+    <string name="permission_option_description">Permission option: %1$s</string>
+    <string name="permission_force_allow">Force allow</string>
+    <string name="permission_update_hint">Send a message to update permissions</string>
+    <string name="permission_title">Permissions</string>
+    <string name="permission_force_title">Allow all (forced)</string>
+    <string name="permission_force_warning">Until the new approval permissions take effect, the client will automatically allow all approval requests. Continue?</string>
+    <string name="permission_cancel">Cancel</string>
+    <string name="permission_continue">Continue</string>
+    <string name="permission_force_unavailable">Force allow was not enabled because the conversation is restoring or viewing history only.</string>
+</resources>
