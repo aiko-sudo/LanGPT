@@ -219,4 +219,10 @@
     <string name="work_text_217">"Release to refresh"</string>
     <string name="work_text_218">"Pull to refresh"</string>
     <string name="work_text_219">"Refreshing…"</string>
+    <string name="work_text_220">"Fork conversation"</string>
+    <string name="work_text_221">"Forked as a new conversation"</string>
+    <string name="work_text_222">"Conversation is running; fork after it finishes"</string>
+    <string name="work_text_223">"AGENTS.md missing · Tap to create"</string>
+    <string name="work_text_224">"AGENTS.md template created"</string>
+    <string name="work_text_225">"Operation failed: "</string>
 </resources>

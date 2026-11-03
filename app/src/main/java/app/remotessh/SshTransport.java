@@ -268,6 +268,32 @@ public final class SshTransport implements AutoCloseable {
     return jsonCommand(script,request,request.optString("action").equals("update") ? 650 : 90);
   }
 
+  /** Run a plain shell command on the host; returns trimmed stdout (bounded). */
+  String runCommand(String command) throws Exception {
+    Session current = session;
+    if (closed || current == null || !current.isConnected()) throw new IOException("SSH 未连接");
+    ChannelExec exec = (ChannelExec) current.openChannel("exec");
+    java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+    try {
+      exec.setPty(false);
+      exec.setCommand(command);
+      exec.setInputStream(null);
+      exec.setOutputStream(out);
+      exec.setErrStream(new java.io.OutputStream() { public void write(int value) {} });
+      exec.connect(15000);
+      long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
+      while (!exec.isClosed()) {
+        if (closed || !current.isConnected()) throw new IOException("SSH 已断开");
+        if (System.nanoTime() > deadline) throw new IOException("远端命令超时");
+        Thread.sleep(50);
+      }
+    } finally {
+      exec.disconnect();
+    }
+    String text = new String(out.toByteArray(), java.nio.charset.StandardCharsets.UTF_8);
+    return text.length() > 2000 ? text.substring(0, 2000) : text;
+  }
+
   org.json.JSONObject jsonCommand(String script, org.json.JSONObject request, int timeout) throws Exception {
     Session current = session;
     if (closed || current == null || !current.isConnected()) throw new IOException("SSH 未连接");
@@ -314,6 +340,69 @@ public final class SshTransport implements AutoCloseable {
   }
 
   SftpContent fileContent() { return new SftpContent(this::sftp); }
+
+  /** True iff the remote regular path exists (single stat, fresh channel). */
+  boolean fileExists(String path) throws Exception {
+    ChannelSftp ch = sftp();
+    try {
+      ch.stat(path);
+      return true;
+    } catch (SftpException e) {
+      if (e.id == ChannelSftp.SSH_FX_NO_SUCH_FILE) return false;
+      throw e;
+    } finally {
+      ch.disconnect();
+    }
+  }
+
+  /** Atomically write a UTF-8 text file at the remote path (create or overwrite). */
+  void writeTextFile(String path, String content) throws Exception {
+    ChannelSftp ch = sftp();
+    try {
+      ch.put(new java.io.ByteArrayInputStream(content.getBytes(java.nio.charset.StandardCharsets.UTF_8)), path);
+    } finally {
+      ch.disconnect();
+    }
+  }
+
+  /** Read a remote UTF-8 text file; returns null when it does not exist. */
+  String readTextFile(String path) throws Exception {
+    ChannelSftp ch = sftp();
+    try {
+      java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+      ch.get(path, out);
+      return new String(out.toByteArray(), java.nio.charset.StandardCharsets.UTF_8);
+    } catch (SftpException e) {
+      if (e.id == ChannelSftp.SSH_FX_NO_SUCH_FILE) return null;
+      throw e;
+    } finally {
+      ch.disconnect();
+    }
+  }
+
+  /** mkdir -p for absolute or ~-relative paths; existing dirs are fine. */
+  void ensureDirectory(String path) throws Exception {
+    ChannelSftp ch = sftp();
+    try {
+      java.util.ArrayList<String> parts = new java.util.ArrayList<>();
+      String cur = path.startsWith("/") ? "" : ".";
+      for (String seg : path.split("/")) {
+        if (seg.isEmpty()) continue;
+        cur = cur.isEmpty() ? "/" + seg : cur + "/" + seg;
+        parts.add(cur);
+      }
+      for (String dir : parts) {
+        try {
+          ch.stat(dir);
+        } catch (SftpException e) {
+          if (e.id == ChannelSftp.SSH_FX_NO_SUCH_FILE) ch.mkdir(dir);
+          else throw e;
+        }
+      }
+    } finally {
+      ch.disconnect();
+    }
+  }
 
   private ChannelSftp sftp() throws Exception {
     // Retry only a channel-open failure (before any file operation starts).

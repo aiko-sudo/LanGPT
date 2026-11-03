@@ -23,7 +23,7 @@ import time
 from pathlib import Path
 
 LIMIT = 32 * 1024 * 1024
-SCRIPT_VERSION = 7  # bump when host bridge behavior changes; idle daemons auto-upgrade
+SCRIPT_VERSION = 17  # bump when host bridge behavior changes; idle daemons auto-upgrade
 
 
 def encode(value):
@@ -47,6 +47,39 @@ def proxy_env():
     env = dict(os.environ)
     env.setdefault('HTTPS_PROXY', url)
     env.setdefault('HTTP_PROXY', url)
+    return env
+
+
+# Foreign provider API keys, deliberately stripped for the custom-API channel
+# (pattern borrowed from OpenMausBot's engine isolation): opencode reads env
+# keys for some built-in providers, and a custom session must never bill
+# against another engine's login. The custom entry's own key travels in
+# opencode.json provider options (written by the app), never via env.
+FOREIGN_PROVIDER_KEYS = ('OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GROK_API_KEY',
+                         'XAI_API_KEY', 'OPENROUTER_API_KEY', 'DEEPSEEK_API_KEY',
+                         'GOOGLE_API_KEY', 'GEMINI_API_KEY')
+
+
+def spawn_env(strip_provider_keys=False):
+    """Environment for agent backend processes (codex / opencode / ...).
+
+    Two concerns merged:
+    - proxy_env(): optional opt-in backend proxy from ~/.codex/proxy.env.
+    - PATH must cover user-local install roots (~/npm-global/bin, ~/.local/bin,
+      ~/bin). The daemon is spawned from a non-interactive SSH exec whose PATH
+      lacks them, so `opencode serve` died with "not found" and every request
+      hit "Connection refused" (verified: daemon.log, port 4610 never listened).
+    - strip_provider_keys: drop other engines' API keys (opencode/custom
+      channel only; the codex primary channel keeps its own env intact).
+    """
+    env = proxy_env() or dict(os.environ)
+    local = [os.path.expanduser('~/npm-global/bin'),
+             os.path.expanduser('~/.local/bin'),
+             os.path.expanduser('~/bin')]
+    env['PATH'] = ':'.join(local) + ':' + env.get('PATH', '/usr/bin:/bin')
+    if strip_provider_keys:
+        for key in FOREIGN_PROVIDER_KEYS:
+            env.pop(key, None)
     return env
 
 
@@ -345,7 +378,7 @@ class Host:
         self.process = subprocess.Popen(command, shell=True, executable='/bin/sh',
                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                         stderr=sys.stderr, start_new_session=True,
-                                        env=proxy_env() or None)
+                                        env=spawn_env())
         (folder / 'server.pid').write_text(str(self.process.pid))
         threading.Thread(target=self.read, daemon=True).start()
         # Runtime seam: read-only observer of codex shared daemon (PC TUI sessions).
@@ -602,6 +635,8 @@ class OpenCodeHost:
         self.initialized = False
         self.last_thread = ''
         self.active = set()
+        self.pending = {}      # sid -> count of in-flight parts
+        self.step_open = {}    # sid -> a step is in progress
         self.text_parts = {}
         self.reason_parts = {}
         self.last_prompt = {}
@@ -615,7 +650,7 @@ class OpenCodeHost:
         self.process = subprocess.Popen(command, shell=True, executable='/bin/sh',
                                         stdin=subprocess.DEVNULL, stdout=sys.stderr,
                                         stderr=sys.stderr, start_new_session=True,
-                                        env=proxy_env() or None)
+                                        env=spawn_env(strip_provider_keys=True))
         (folder / 'server.pid').write_text(str(self.process.pid))
         deadline = time.time() + 30
         while time.time() < deadline:
@@ -685,47 +720,74 @@ class OpenCodeHost:
         if etype == 'session.next.prompted':
             self.last_prompt[sid] = d.get('messageID', '')
             self.active.add(sid)
-            emit('turn/started', threadId=sid, turn={'id': d.get('messageID', '')})
+            tid = self.last_prompt[sid]
+            # The phone already shows the user's message via an optimistic local
+            # item; emitting another one here just duplicates it (the two ids
+            # never match, so the app can't dedupe them -> an empty extra input
+            # bubble). Keep only the turn bookkeeping.
+            emit('turn/started', threadId=sid, turn={'id': tid})
             emit('thread/status/changed', threadId=sid, status={'type': 'active'})
-        elif etype == 'session.next.text.started':
-            part = d.get('textID', '')
+        tid = self.last_prompt.get(sid, '')
+        # opencode part ids from the event stream are RELATIVE ("text-0",
+        # "reasoning-0", "call-0") and repeat on every assistant message, so a
+        # second reply would collide with the first and the phone would replace
+        # it instead of appending. Namespace every part under its prompt id.
+        def uid(raw):
+            return (tid + '-' + raw) if tid else raw
+        if etype == 'session.next.text.started':
+            self.pending[sid] = self.pending.get(sid, 0) + 1
+            raw = d.get('textID', ''); part = uid(raw)
             self.text_parts[part] = ''
-            emit('item/started', threadId=sid, itemId=part,
+            emit('item/started', threadId=sid, turnId=tid, itemId=part,
                  item={'id': part, 'type': 'agentMessage', 'text': ''})
         elif etype == 'session.next.text.delta':
-            part = d.get('textID', '')
+            raw = d.get('textID', ''); part = uid(raw)
             self.text_parts[part] = self.text_parts.get(part, '') + d.get('delta', '')
-            emit('item/agentMessage/delta', threadId=sid, itemId=part, delta=d.get('delta', ''))
+            emit('item/agentMessage/delta', threadId=sid, turnId=tid, itemId=part, delta=d.get('delta', ''))
         elif etype == 'session.next.text.ended':
-            part = d.get('textID', '')
-            emit('item/completed', threadId=sid,
+            self.pending[sid] = max(0, self.pending.get(sid, 0) - 1)
+            part = uid(d.get('textID', ''))
+            emit('item/completed', threadId=sid, turnId=tid,
                  item={'id': part, 'type': 'agentMessage',
                        'text': d.get('text') or self.text_parts.pop(part, '')})
         elif etype == 'session.next.reasoning.started':
-            part = d.get('reasoningID', '')
+            self.pending[sid] = self.pending.get(sid, 0) + 1
+            part = uid(d.get('reasoningID', ''))
             self.reason_parts[part] = ''
-            emit('item/started', threadId=sid, itemId=part,
+            emit('item/started', threadId=sid, turnId=tid, itemId=part,
                  item={'id': part, 'type': 'reasoning', 'text': '', 'status': 'inProgress'})
         elif etype == 'session.next.reasoning.delta':
-            emit('item/reasoning/textDelta', threadId=sid,
-                 itemId=d.get('reasoningID', ''), delta=d.get('delta', ''))
+            emit('item/reasoning/textDelta', threadId=sid, turnId=tid,
+                 itemId=uid(d.get('reasoningID', '')), delta=d.get('delta', ''))
         elif etype == 'session.next.reasoning.ended':
-            emit('item/completed', threadId=sid,
-                 item={'id': d.get('reasoningID', ''), 'type': 'reasoning', 'text': d.get('text', '')})
+            self.pending[sid] = max(0, self.pending.get(sid, 0) - 1)
+            emit('item/completed', threadId=sid, turnId=tid,
+                 item={'id': uid(d.get('reasoningID', '')), 'type': 'reasoning', 'text': d.get('text', '')})
         elif etype == 'session.next.tool.input.started':
-            call = d.get('callID', '')
-            emit('item/started', threadId=sid, itemId=call,
+            self.pending[sid] = self.pending.get(sid, 0) + 1
+            call = uid(d.get('callID', ''))
+            emit('item/started', threadId=sid, turnId=tid, itemId=call,
                  item={'id': call, 'type': 'commandExecution', 'command': d.get('name', ''),
                        'text': '', 'status': 'inProgress'})
         elif etype == 'session.next.tool.input.delta':
-            emit('item/commandExecution/outputDelta', threadId=sid,
-                 itemId=d.get('callID', ''), delta=d.get('delta', ''))
+            emit('item/commandExecution/outputDelta', threadId=sid, turnId=tid,
+                 itemId=uid(d.get('callID', '')), delta=d.get('delta', ''))
         elif etype in ('session.next.tool.success', 'session.next.tool.failed'):
-            call = d.get('callID', '')
+            call = uid(d.get('callID', ''))
             ok = etype.endswith('success')
-            emit('item/completed', threadId=sid,
+            self.pending[sid] = max(0, self.pending.get(sid, 0) - 1)
+            emit('item/completed', threadId=sid, turnId=tid,
                  item={'id': call, 'type': 'commandExecution', 'command': '',
                        'status': 'completed' if ok else 'failed', 'exitCode': 0 if ok else 1})
+        elif etype == 'session.next.step.started':
+            self.step_open[sid] = True
+        elif etype == 'session.next.step.ended':
+            self.step_open[sid] = False
+            if sid in self.active and self.pending.get(sid, 0) <= 0:
+                self.active.discard(sid)
+                emit('turn/completed', threadId=sid,
+                     turn={'id': self.last_prompt.get(sid, ''), 'status': 'completed'})
+                emit('thread/status/changed', threadId=sid, status={'type': 'idle'})
         elif etype == 'session.next.step.failed':
             self.active.discard(sid)
             emit('turn/completed', threadId=sid,
@@ -808,6 +870,18 @@ class OpenCodeHost:
                             pass
                     threading.Timer(1.0, stop).start()
                 return
+            if method == 'thread/delete':
+                # opencode DELETE /api/session/{id} is idempotent (200 even when
+                # the session is already gone), so a missing session is success.
+                tid = params.get('threadId', '')
+                if tid:
+                    try:
+                        self.http('DELETE', '/api/session/%s' % tid)
+                    except Exception:
+                        pass
+                    self.active.discard(tid)
+                self.reply(peer, ident, {})
+                return
             if method == 'thread/list':
                 sessions = self.http('GET', '/api/session').get('data', [])
                 threads = []
@@ -848,6 +922,15 @@ class OpenCodeHost:
                 model = params.get('model') or ''
                 if '/' in model:
                     provider, model_id = model.split('/', 1)
+                    # opencode binds the model to the SESSION, not to a single
+                    # prompt: a model passed in the prompt body is ignored and
+                    # the session silently falls back to the config default.
+                    # Set it on the session first so the switch takes effect.
+                    try:
+                        self.http('POST', '/api/session/%s/model' % thread_id,
+                                  {'model': {'providerID': provider, 'id': model_id}})
+                    except Exception:
+                        pass
                     body['model'] = {'id': model_id, 'providerID': provider}
                 result = self.http('POST', '/api/session/%s/prompt' % thread_id, body).get('data', {})
                 self.last_prompt[thread_id] = result.get('id', '')
@@ -855,17 +938,56 @@ class OpenCodeHost:
                 self.reply(peer, ident, {'turn': {'id': result.get('id', ''), 'status': 'inProgress'}})
                 return
             if method == 'turn/interrupt':
-                self.http('POST', '/api/session/%s/interrupt' % params.get('threadId', ''), {})
+                sid = params.get('threadId', '')
+                try:
+                    self.http('POST', '/api/session/%s/interrupt' % sid, {})
+                except Exception:
+                    pass
+                self.active.discard(sid)
+                self.pending[sid] = 0
                 self.reply(peer, ident, {'interrupted': True})
+                self.push(dict(method='turn/completed', params={'threadId': sid,
+                    'turn': {'id': self.last_prompt.get(sid, ''), 'status': 'completed'}}))
+                self.push(dict(method='thread/status/changed', params={'threadId': sid,
+                    'status': {'type': 'idle'}}))
                 return
             if method == 'model/list':
-                models = []
+                # opencode advertises every provider it knows (built-in free /
+                # paid models), but those 401 ("PAID_MODEL_AUTH_REQUIRED") until
+                # the PC owner runs `opencode auth login`. Mark anything that is
+                # not configured in opencode.json so the user doesn't pick a
+                # model that silently falls back to another provider.
+                configured = set()
+                try:
+                    cfg_path = Path.home() / '.config' / 'opencode' / 'opencode.json'
+                    cfg = json.loads(cfg_path.read_text())
+                    configured = set((cfg.get('provider') or {}).keys())
+                except Exception:
+                    configured = set()
+                # Custom (configured) providers first, everything else after.
+                mine, other = [], []
                 for m in self.http('GET', '/api/model').get('data', []):
                     if not isinstance(m, dict) or not m.get('id'):
                         continue
-                    models.append({'id': '%s/%s' % (m.get('providerID', ''), m.get('id')),
-                                   'name': m.get('name') or m.get('id'),
-                                   'description': m.get('reasoning') and '推理' or ''})
+                    provider_id = m.get('providerID', '')
+                    # opencode's built-in free models ("*-free") all fail when
+                    # driven through the server API: the "native" ones raise
+                    # UnsupportedApiError outright, and the "aisdk" ones reach
+                    # opencode's own inference endpoint, which answers
+                    # "Upstream request failed: Model is unavailable". None of
+                    # them produce a reply, so don't list them at all -- only
+                    # the user's own custom (configured) provider is usable.
+                    if provider_id == 'opencode':
+                        continue
+                    description = '推理' if m.get('reasoning') else ''
+                    if provider_id and provider_id not in configured:
+                        note = '需在电脑上登录后可用'
+                        description = (description + ' · ' if description else '') + note
+                    entry = {'id': '%s/%s' % (provider_id, m.get('id')),
+                             'name': m.get('name') or m.get('id'),
+                             'description': description}
+                    (mine if provider_id in configured else other).append(entry)
+                models = mine + other
                 self.reply(peer, ident, {'data': models, 'nextCursor': None})
                 return
             if not method and ident is not None:
@@ -889,19 +1011,27 @@ class OpenCodeHost:
     def history_turns(self, thread_id):
         turns = []
         try:
-            messages = self.http('GET', '/api/session/%s/message' % thread_id).get('data', [])
+            # opencode returns newest-first; the app renders oldest-first.
+            messages = list(reversed(self.http('GET', '/api/session/%s/message' % thread_id).get('data', [])))
         except Exception:
             messages = []
         for m in messages:
             if not isinstance(m, dict):
                 continue
+            # opencode uses "type" (user/assistant) where codex uses "role",
+            # and keeps its content under "content" rather than "parts".
             info = m.get('info') if isinstance(m.get('info'), dict) else m
-            parts = m.get('parts') or []
-            role = info.get('role', '')
+            parts = info.get('content') or info.get('parts') or []
+            role = info.get('role') or info.get('type') or ''
             mid = info.get('id', '')
             if role == 'user':
-                text = ' '.join(str(part.get('text', '')) for part in parts
-                                if isinstance(part, dict) and part.get('type') == 'text')
+                # opencode stores the user's message under "text", not "content".
+                text = info.get('text', '') or ' '.join(
+                    str(part.get('text', '')) for part in parts
+                    if isinstance(part, dict) and part.get('type') == 'text')
+                # An empty user turn renders as a blank input bubble; skip it.
+                if not text.strip():
+                    continue
                 turns.append({'id': mid, 'status': 'completed',
                               'items': [{'id': mid + '-u', 'type': 'userMessage', 'text': text}]})
             else:

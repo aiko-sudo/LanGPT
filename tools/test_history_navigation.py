@@ -64,6 +64,7 @@ class RemoteApp {
  final Set<String> loadedThreads=new HashSet<>();final Map<String,String> conversationLoads=new HashMap<>();
  String threadId="",model="",reasoningEffort="",permissionMode="",pendingNavigation="",loadingThread="",restoringThread="",replayThread="";
  boolean connected=true,restartingRemote,attaching,busy,replaying,homeVisible=true,pendingHomeLanding;
+ long ctxUsedTokens=-1,ctxTotalTokens=-1;
  int reads,progress;Profile profile=new Profile();
  void checkpoint(){conversationStore.checkpoint();}void changed(){checkpoint();}
  void select(String id){conversationStore.select(id);homeVisible=false;}

@@ -219,4 +219,10 @@
     <string name="work_text_217">"松开刷新"</string>
     <string name="work_text_218">"下拉刷新"</string>
     <string name="work_text_219">"正在刷新…"</string>
+    <string name="work_text_220">"分叉会话"</string>
+    <string name="work_text_221">"已分叉为新会话，可在列表中打开"</string>
+    <string name="work_text_222">"会话运行中，结束后才能分叉"</string>
+    <string name="work_text_223">"AGENTS.md 未配置 · 点击生成"</string>
+    <string name="work_text_224">"已生成 AGENTS.md 模板"</string>
+    <string name="work_text_225">"操作失败："</string>
 </resources>

@@ -40,6 +40,9 @@ final class RemoteBrowser {
   private final TextView refreshHint;
   private String filter = "", project = "";
   private String renderedSignature = "";
+  // 项目根 AGENTS.md 检测缓存：path -> 是否存在；未检测的路径不显示提示行。
+  private final java.util.Map<String, Boolean> agentsMd = new java.util.TreeMap<>();
+  private boolean agentsMdScanning;
 
   private boolean centerHost = true;
 
@@ -217,6 +220,36 @@ final class RemoteBrowser {
       }
     }
     refreshList();
+    scanAgentsMd();
+  }
+
+  /** 后台检测当前 profile 各项目根的 AGENTS.md；结果变化经 signature 触发重绘。 */
+  private void scanAgentsMd() {
+    if (!isShowing() || !app.connected || agentsMdScanning) return;
+    Profile p = null;
+    for (Profile candidate : app.vault.profiles)
+      if (candidate.id.equals(filter)) { p = candidate; break; }
+    if (p == null) return;
+    LinkedHashSet<String> paths = new LinkedHashSet<>(p.projects);
+    if (!p.cwd.isEmpty()) paths.add(p.cwd);
+    java.util.List<String> pending = new java.util.ArrayList<>();
+    for (String path : paths)
+      if (!agentsMd.containsKey(path)) pending.add(path);
+    if (pending.isEmpty()) return;
+    agentsMdScanning = true;
+    app.checkAgentsMd(pending, result -> {
+      agentsMdScanning = false;
+      if (result == null) return;
+      boolean changed = false;
+      for (java.util.Map.Entry<String, Boolean> entry : result.entrySet()) {
+        Boolean old = agentsMd.get(entry.getKey());
+        if (!java.util.Objects.equals(old, entry.getValue())) {
+          agentsMd.put(entry.getKey(), entry.getValue());
+          changed = true;
+        }
+      }
+      if (changed) refresh();
+    });
   }
 
   private String signature() {
@@ -234,6 +267,7 @@ final class RemoteBrowser {
           .append(':').append(thread.optString("cwd")).append(':').append(thread.optLong("updatedAt"))
           .append(':').append(app.threadRunning(thread));
     }
+    value.append("|md:").append(agentsMd);
     return value.toString();
   }
 
@@ -315,6 +349,24 @@ final class RemoteBrowser {
                     .show();
               });
           list.addView(swipe, new LinearLayout.LayoutParams(-1, ui.dp(54)));
+          // AGENTS.md 未配置提示：仅连接中、检测结果明确为缺失时显示；点击一键写入模板。
+          if (app.connected && filter.equals(p.id) && Boolean.FALSE.equals(agentsMd.get(path))) {
+            TextView hint = ui.text(UiText.get(R.string.work_text_223), 11);
+            hint.setTextColor(ui.muted);
+            hint.setPadding(ui.dp(42), 0, 0, ui.dp(6));
+            ui.clickable(hint, () -> app.writeAgentsMd(path, failure -> {
+              if (failure == null) {
+                agentsMd.put(path, Boolean.TRUE);
+                Toast.makeText(ui.activity, UiText.get(R.string.work_text_224), Toast.LENGTH_SHORT).show();
+                refresh();
+              } else {
+                Toast.makeText(ui.activity,
+                    UiText.get(R.string.work_text_225) + (failure.getMessage() == null ? "" : failure.getMessage()),
+                    Toast.LENGTH_LONG).show();
+              }
+            }));
+            list.addView(hint);
+          }
         }
         if (paths.isEmpty())
           list.addView(ui.button(UiText.get(R.string.work_text_127), false, () -> actions.connect(p)));
@@ -379,6 +431,25 @@ final class RemoteBrowser {
               }
               app.viewConversation(id);
               dialog.dismiss();
+            });
+        // 长按分叉：基于该会话的磁盘历史 fork 出新线程（thread/fork），原会话不动。
+        row.setOnLongClickListener(
+            v -> {
+              if (app.threadRunning(thread)) {
+                Toast.makeText(ui.activity, UiText.get(R.string.work_text_222), Toast.LENGTH_SHORT).show();
+                return true;
+              }
+              CenteredMenu.show(ui.activity, ui.fg,
+                  new String[] {UiText.get(R.string.work_text_220)},
+                  index -> app.forkThread(id,
+                      newId -> {
+                        Toast.makeText(ui.activity, UiText.get(R.string.work_text_221), Toast.LENGTH_SHORT).show();
+                        app.refreshThreads(false);
+                      },
+                      failure -> Toast.makeText(ui.activity,
+                          UiText.get(R.string.work_text_225) + (failure.getMessage() == null ? "" : failure.getMessage()),
+                          Toast.LENGTH_LONG).show()));
+              return true;
             });
         SwipeActionLayout swipe = new SwipeActionLayout(
             ui.activity, row, ui.dp(72), UiText.get(R.string.work_text_106), ui.bg, () -> {

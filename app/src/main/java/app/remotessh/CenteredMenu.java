@@ -25,6 +25,12 @@ final class CenteredMenu {
   /** Same menu, but hands the header view back so live data can repaint it. */
   static AlertDialog show(Activity activity,int foreground,int muted,String version,CharSequence[] labels,
       IntConsumer action,java.util.function.Consumer<TextView> headerSink) {
+    return show(activity,foreground,muted,version,labels,action,headerSink,.60f);
+  }
+
+  /** Menu at an explicit fraction of screen width, for row text long enough to need it. */
+  static AlertDialog show(Activity activity,int foreground,int muted,String version,CharSequence[] labels,
+      IntConsumer action,java.util.function.Consumer<TextView> headerSink,float widthFraction) {
     float density=activity.getResources().getDisplayMetrics().density;
     LinearLayout content=new LinearLayout(activity);
     content.setOrientation(LinearLayout.VERTICAL);
@@ -65,7 +71,7 @@ final class CenteredMenu {
     holder[0]=menu;
     menu.show();
     if(menu.getWindow()!=null)menu.getWindow().setLayout(
-        Math.round(activity.getResources().getDisplayMetrics().widthPixels*.60f),ViewGroup.LayoutParams.WRAP_CONTENT);
+        Math.round(activity.getResources().getDisplayMetrics().widthPixels*widthFraction),ViewGroup.LayoutParams.WRAP_CONTENT);
     return menu;
   }
 

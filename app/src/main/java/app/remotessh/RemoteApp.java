@@ -89,6 +89,150 @@ public final class RemoteApp extends Application {
   private String journalScript;
   InteractionHistory interactions = new InteractionHistory();
   final ThumbnailCache thumbnails = new ThumbnailCache();
+  /** Disk tier for conversation images: survives reconnects and remote deletion.
+   *  Initialized in onCreate — Application field initializers run before
+   *  attachBaseContext, so calling getCacheDir() there crashes on startup. */
+  ImageDiskCache imageDisk;
+  // Context usage of the *current* thread, from thread/tokenUsage/updated pushes.
+  // -1 = unknown (event not received yet or shape unrecognized) — UI must hide.
+  long ctxUsedTokens = -1;
+  long ctxTotalTokens = -1;
+
+  // ---- Custom-model API (ChatGPT usage-limit escape hatch) ----
+  /** True while the active connection runs on the user's custom OpenAI-compatible API. */
+  boolean customOverride;
+  /** True after the codex backend reported usageLimitExceeded; cleared by a clean turn. */
+  boolean mainModelLimited;
+  /**
+   * Conversation context carried across the runtime switch: prepended to the
+   * first message of the custom-API session so the new agent can continue the
+   * previous conversation even though server-side histories are per-runtime.
+   */
+  String pendingContextPrefix = "";
+
+  CustomApiConfig customApi() {
+    return CustomApiConfig.fromPrefsValue(getSharedPreferences("custom_api", MODE_PRIVATE).getString("config", ""));
+  }
+
+  void saveCustomApi(CustomApiConfig c) {
+    getSharedPreferences("custom_api", MODE_PRIVATE).edit().putString("config", c.prefsValue()).apply();
+    changed();
+  }
+
+  /** Build the cross-agent continuation prefix from the current conversation. */
+  static String buildContextPrefix(List<ChatItem> items) {
+    StringBuilder context = new StringBuilder();
+    int budget = 8000;
+    List<ChatItem> recent = new ArrayList<>();
+    for (int i = items.size() - 1; i >= 0 && recent.size() < 20; i--) {
+      ChatItem item = items.get(i);
+      if (!(item.user() || item.type.equals("agentMessage"))) continue;
+      String text = item.text == null ? "" : item.text.trim();
+      if (text.isEmpty()) continue;
+      recent.add(0, item);
+    }
+    for (ChatItem item : recent) {
+      String role = item.user() ? "用户" : "助手";
+      String text = item.text.trim();
+      if (text.length() > 600) text = text.substring(0, 600) + "…";
+      String line = role + "：" + text + "\n";
+      if (context.length() + line.length() > budget) break;
+      context.append(line);
+    }
+    if (context.length() == 0) return "";
+    return "[以下是此前对话的上下文记录，请基于它继续协助用户]\n" + context + "[上下文结束]\n\n";
+  }
+
+  /**
+   * Repoint the current connection at the custom API: write the opencode
+   * provider/auth files on the PC (preserving unrelated content), then
+   * reconnect this profile with the opencode runtime. The active entry's
+   * model becomes the session default, and the current conversation is
+   * carried over as context for the first message.
+   */
+  void switchToCustomModel(java.util.function.Consumer<String> failure) {
+    CustomApiConfig.Entry c = customApi().active();
+    if (c == null || !CustomApiConfig.ready(c)) { failure.accept("请先在后台设置中配置自定义模型"); return; }
+    if (!connected || profile == null) { failure.accept("请先连接主机"); return; }
+    if (!profile.runtime.equals("codex")) { failure.accept("仅主 ChatGPT 通道支持切换"); return; }
+    final String contextPrefix = customOverride ? "" : buildContextPrefix(items);
+    final CustomApiConfig.Entry entry = c;
+    SshTransport current = transport;
+    final int g = generation;
+    worker.execute(() -> {
+      try {
+        current.ensureDirectory(".config/opencode");
+        current.ensureDirectory(".local/share/opencode");
+        String oldCfg = current.readTextFile(".config/opencode/opencode.json");
+        current.writeTextFile(".config/opencode/opencode.json", CustomApiConfig.mergeProviderConfig(oldCfg, entry.baseUrl, entry.model, entry.apiKey));
+        String oldAuth = current.readTextFile(".local/share/opencode/auth.json");
+        current.writeTextFile(".local/share/opencode/auth.json", CustomApiConfig.mergeAuthConfig(oldAuth, entry.apiKey));
+        // opencode serve reads its config once at startup: without this restart
+        // the old (possibly wrong) provider config keeps serving requests.
+        // Match by daemon.pid + last argv (the runtime), never `pkill -f`
+        // (self-matching would kill this shell), and kill the port owner by
+        // socket instead of by pattern.
+        current.runCommand("fuser -k 4610/tcp >/dev/null 2>&1; "
+            + "for f in $HOME/.remote-gpt/*/daemon.pid; do p=$(cat \"$f\" 2>/dev/null); "
+            + "if [ -n \"$p\" ] && [ \"$(tr '\\0' '\\n' < /proc/$p/cmdline 2>/dev/null | tail -1)\" = \"opencode\" ]; "
+            + "then kill \"$p\" 2>/dev/null; fi; done; sleep 1; echo RESTARTED");
+      } catch (Exception e) {
+        String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+        if (g == generation) main.post(() -> failure.accept(message));
+        return;
+      }
+      if (g != generation) return;
+      // Local handoff snapshot: even if both server-side histories vanish,
+      // the carried context stays on the phone.
+      try {
+        java.io.File dir = new java.io.File(getFilesDir(), "history-handoff");
+        //noinspection ResultOfMethodCallIgnored
+        dir.mkdirs();
+        java.io.File snapshot = new java.io.File(dir, System.currentTimeMillis() + ".txt");
+        snapshot.createNewFile();
+        java.io.FileOutputStream out = new java.io.FileOutputStream(snapshot);
+        out.write(contextPrefix.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        out.close();
+        // Keep the newest 20 handoffs only.
+        java.io.File[] all = dir.listFiles();
+        if (all != null && all.length > 20) {
+          java.util.Arrays.sort(all, (a, b) -> Long.compare(a.lastModified(), b.lastModified()));
+          for (int i = 0; i < all.length - 20; i++) //noinspection ResultOfMethodCallIgnored
+            all[i].delete();
+        }
+      } catch (Exception ignored) {
+      }
+      main.post(() -> {
+        Profile copy = Profile.from(profile.json());
+        copy.runtime = "opencode";
+        copy.command = "opencode serve --port 4610 --hostname 127.0.0.1";
+        // The custom model must be the session default, not the ChatGPT one.
+        model = CustomApiConfig.PROVIDER_ID + "/" + entry.model;
+        effectiveModel = model;
+        pendingContextPrefix = contextPrefix;
+        customOverride = true;
+        mainModelLimited = false;
+        // Let the previous SSH session/daemon teardown settle before dialing
+        // the new runtime, otherwise the first attempt can hit
+        // "远端正在关闭" (remote closing) on the half-closed transport.
+        main.postDelayed(() -> connect(copy), 600);
+      });
+    });
+  }
+
+  private static long firstNonNegative(JSONObject o, String... keys) {
+    for (String k : keys) {
+      long v = o.optLong(k, -1);
+      if (v >= 0) return v;
+    }
+    return -1;
+  }
+
+  /** Ask the backend to compact the thread's history (thread/compact/start). Async. */
+  void compactThread(String id, java.util.function.Consumer<Throwable> done) {
+    if (id == null || id.isEmpty()) { done.accept(new IllegalArgumentException("缺少会话 ID")); return; }
+    request("thread/compact/start", Json.obj("threadId", id), ignored -> done.accept(null), done);
+  }
   private final Set<String> journalPolling = new HashSet<>();
   // Main-thread state: one journal exec per connection, bounded failure backoff.
   int journalPollFailures, journalPollCursor;
@@ -403,6 +547,9 @@ public final class RemoteApp extends Application {
     // Explicit navigation wins over a late automatic home-landing callback.
     pendingHomeLanding = false; pendingNavigation = "";
     checkpoint();
+    // Context usage belongs to one conversation; reset on switch until the
+    // next tokenUsage push for the new thread arrives.
+    ctxUsedTokens = -1;
     boolean loaded = loadedThreads.contains(id);
     select(id);
     if (loaded || conversationLoads.containsKey(id) || id.equals(restoringThread)) { changed(); return; }
@@ -586,6 +733,7 @@ public final class RemoteApp extends Application {
   @Override
   public void onCreate() {
     super.onCreate();
+    imageDisk = new ImageDiskCache(getCacheDir());
     language = new AppLanguage(this);
     UsageLimits.setLocaleProvider(UiText::locale);
     ModelOptions.setLocaleProvider(UiText::locale);
@@ -724,6 +872,13 @@ public final class RemoteApp extends Application {
   }
 
   public void connect(Profile p) {
+    // Clear custom-model mode only when we are leaving it (connecting back to a
+    // non-opencode runtime, i.e. the primary ChatGPT channel). When the profile
+    // IS the opencode runtime -- the custom-model channel -- keep the flag set,
+    // otherwise connect() would wipe the customOverride that switchToCustomModel
+    // just established 600ms earlier, and the picker's "back to main model"
+    // state would never update.
+    if (customOverride && !"opencode".equals(p.runtime)) { customOverride = false; changed(); }
     String previousProfileId = profile == null ? "" : profile.id;
     boolean sameHost = profile != null && profile.id.equals(p.id);
     disconnect();
@@ -1451,6 +1606,66 @@ public final class RemoteApp extends Application {
     });
   }
 
+  /**
+   * Fork a persisted conversation into a new thread (app-server thread/fork).
+   * Verified against codex 0.166.0: params {threadId}, success result.thread.id
+   * is the new thread; the source thread is untouched.
+   */
+  void forkThread(String id, java.util.function.Consumer<String> done, java.util.function.Consumer<Throwable> failure) {
+    if (id == null || id.isEmpty()) { failure.accept(new IllegalArgumentException("缺少会话 ID")); return; }
+    request("thread/fork", Json.obj("threadId", id),
+        r -> {
+          JSONObject t = r == null ? null : r.optJSONObject("thread");
+          done.accept(t == null ? "" : t.optString("id"));
+        },
+        failure);
+  }
+
+  /** Starter AGENTS.md template written into a project root on demand. */
+  static final String AGENTS_MD_TEMPLATE = "# AGENTS.md\n\n"
+      + "## 项目说明\n<!-- 技术栈、目录结构、程序入口 -->\n\n"
+      + "## 代码风格\n<!-- 缩进、命名、注释约定 -->\n\n"
+      + "## 测试要求\n<!-- 提交前必须通过的测试命令 -->\n\n"
+      + "## 禁止操作\n<!-- 不得自动执行的命令或不得修改的文件 -->\n";
+
+  /**
+   * Check AGENTS.md presence for the given project roots. Callback receives
+   * null on failure; otherwise path -> exists. Worker thread, generation-guarded.
+   */
+  void checkAgentsMd(java.util.List<String> paths, java.util.function.Consumer<java.util.Map<String, Boolean>> done) {
+    if (!connected) { done.accept(null); return; }
+    SshTransport current = transport;
+    final int g = generation;
+    if (current == null) { done.accept(null); return; }
+    worker.execute(() -> {
+      java.util.Map<String, Boolean> out = new java.util.LinkedHashMap<>();
+      try {
+        for (String path : paths) out.put(path, current.fileExists(path + "/AGENTS.md"));
+      } catch (Exception e) {
+        main.post(() -> done.accept(null));
+        return;
+      }
+      if (g != generation) return;
+      main.post(() -> done.accept(out));
+    });
+  }
+
+  /** Write the starter AGENTS.md template under the project root. */
+  void writeAgentsMd(String path, java.util.function.Consumer<Throwable> done) {
+    if (!connected) { done.accept(new java.io.IOException("请先连接电脑")); return; }
+    SshTransport current = transport;
+    final int g = generation;
+    if (current == null) { done.accept(new java.io.IOException("请先连接电脑")); return; }
+    worker.execute(() -> {
+      try {
+        current.writeTextFile(path + "/AGENTS.md", AGENTS_MD_TEMPLATE);
+        if (g == generation) main.post(() -> done.accept(null));
+      } catch (Exception e) {
+        if (g == generation) main.post(() -> done.accept(e));
+      }
+    });
+  }
+
   /** Read-only global work snapshot. Never changes the project browser's scope. */
   void refreshWorkPanel(java.util.function.Consumer<Throwable> finished) {
     if(!connected) { finished.accept(new java.io.IOException("请先连接电脑"));return; }
@@ -1953,7 +2168,13 @@ public final class RemoteApp extends Application {
     state = "正在停止…";
     changed();
     if (!turnId.isEmpty())
-      request("turn/interrupt", Json.obj("threadId", threadId, "turnId", turnId), r -> {});
+      request("turn/interrupt", Json.obj("threadId", threadId, "turnId", turnId), r ->
+          // Safety net: a runtime may never emit the closing event (verified:
+          // opencode has no session.idle at all). The user's stop is
+          // authoritative, so never stay stuck in "stopping".
+          main.postDelayed(() -> {
+            if (stopping) { stopping = false; busy = false; state = ""; changed(); }
+          }, 2500));
   }
 
   String notificationApprovalToken(JSONObject request) {
@@ -2127,6 +2348,30 @@ public final class RemoteApp extends Application {
         if (timedStatus.equals("active")) taskProgress(eventThread).start("", 0, System.currentTimeMillis());
         else if (timedStatus.equals("idle") || timedStatus.equals("systemError")) taskProgress(eventThread).finish(System.currentTimeMillis());
       }
+      else if (method.equals("thread/tokenUsage/updated")) {
+        // Shape not sample-verified (needs a successful turn); parse leniently:
+        // accept the usage object either at params root or under params.usage,
+        // and any of the known token field spellings. Unknown shape = ignored.
+        JSONObject u = p.optJSONObject("usage");
+        if (u == null) u = p;
+        long used = firstNonNegative(u, "inputTokens", "usedTokens", "tokens", "totalTokensUsed");
+        long total = firstNonNegative(u, "contextWindow", "contextWindowSize", "totalTokens", "contextWindowTokens");
+        if (used >= 0) {
+          ctxUsedTokens = used;
+          ctxTotalTokens = total;
+          changed();
+        }
+      }
+      else if (method.equals("thread/compacted")) {
+        // Compaction finished: reload the current thread so the message list
+        // reflects the compacted history instead of stale pre-compact items.
+        String t = p.optString("threadId");
+        if (!t.isEmpty() && t.equals(threadId)) {
+          ctxUsedTokens = -1;
+          changed();
+          readThread(t, true);
+        }
+      }
     }
     if (method.equals("thread/status/changed")) {
       for (int n = 0; n < threads.length(); n++) {
@@ -2226,9 +2471,18 @@ public final class RemoteApp extends Application {
         if (item.type.equals("reasoning") && item.status.equals("inProgress")) item.status = "completed";
       state = turn.optString("status").equals("interrupted") ? "已停止" : "已连接";
       if (turn.optJSONObject("error") != null) {
-        String message = Json.object(turn, "error").optString("message");
+        JSONObject turnError = Json.object(turn, "error");
+        String message = turnError.optString("message");
+        // Primary-backend usage limit: raise the custom-model escape hatch.
+        String info = turnError.optString("codexErrorInfo");
+        if (info.equals("usageLimitExceeded") || message.contains("usage limit") || message.contains("额度")) {
+          if (!historical && !customOverride) mainModelLimited = true;
+        }
         if (historical) historicalError(turn.optString("id"), message);
         else error = message;
+      } else if (!historical) {
+        // A clean completion clears the usage-limit state.
+        mainModelLimited = false;
       }
       java.util.LinkedHashMap<String,ChatItem> resultItems = new java.util.LinkedHashMap<>();
       for (ChatItem item : items) resultItems.put(item.id, item);
