@@ -34,6 +34,18 @@ final class TurnController {
   private void sendPayload(String text,List<String> attachments,List<FileAttachment> files) {
     if (app.isRestartingRemote() || app.recoveryInProgress() || app.replaying || !app.connected || app.busy || app.readOnly || app.attaching || (text.trim().isEmpty() && attachments.isEmpty() && files.isEmpty())) return;
     if (!app.validateServiceTier()) return;
+    // First message after a runtime switch carries the previous conversation
+    // so the new agent keeps its context (server histories are per-runtime).
+    if (!app.pendingContextPrefix.isEmpty() && !text.trim().isEmpty()) {
+      String carried = app.pendingContextPrefix + text;
+      app.pendingContextPrefix = "";
+      sendPayloadInner(carried, attachments, files);
+      return;
+    }
+    sendPayloadInner(text, attachments, files);
+  }
+
+  private void sendPayloadInner(final String text,List<String> attachments,List<FileAttachment> files) {
     app.rememberLastSessionChoices();
     app.busy = true;
     app.stopping = false;

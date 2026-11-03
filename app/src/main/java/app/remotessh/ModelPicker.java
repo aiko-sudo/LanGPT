@@ -45,6 +45,32 @@ final class ModelPicker {
     TextView subtitle = ui.text(UiText.get(R.string.network_text_002), 12, ui.muted);
     subtitle.setPadding(ui.dp(4), 0, 0, ui.dp(16));
     panelView.addView(subtitle);
+    // Cross-channel switch: jump between the primary (ChatGPT) channel and the
+    // custom-API channel from the same picker. The phone shows the model list of
+    // the *current* runtime only, so without this there is no obvious way to
+    // reach the other channel while the primary still has quota. Both
+    // directions carry the current chat history/context with them.
+    boolean onCustom = app.customOverride;
+    boolean canSwitch = onCustom || app.customApi().ready();
+    if (canSwitch) {
+      String switchLabel = onCustom
+          ? UiText.get(R.string.main_extra_81)
+          : UiText.get(R.string.main_extra_69);
+      TextView crossSwitch = ui.text(switchLabel, 15, ui.fg);
+      crossSwitch.setPadding(ui.dp(14), 0, ui.dp(14), 0);
+      crossSwitch.setMinHeight(ui.dp(48));
+      crossSwitch.setGravity(Gravity.CENTER_VERTICAL);
+      crossSwitch.setBackground(ui.rounded(ui.panel, 14));
+      ui.clickable(crossSwitch, () -> {
+        dismiss();
+        MainActivity main = (MainActivity) activity;
+        if (onCustom) main.confirmRestorePrimary();
+        else main.switchToCustomModel();
+      });
+      LinearLayout.LayoutParams crossParams = new LinearLayout.LayoutParams(-1, ui.dp(48));
+      crossParams.topMargin = ui.dp(4); crossParams.bottomMargin = ui.dp(6);
+      panelView.addView(crossSwitch, crossParams);
+    }
     TextView catalogStatus = ui.text("", 12, ui.muted);
     panelView.addView(catalogStatus);
     ScrollView modelScroll = new ModelListScrollView(activity);

@@ -91,11 +91,21 @@ final class MessageImageTile {
       try {
         MediaFiles.check(active);
         String key=ThumbnailCache.key(cacheHost,source);Bitmap bitmap=app.thumbnails.images.get(key);
+        byte[] fetched=null;
+        if(bitmap==null) {
+          // Warm tier: disk cache survives reconnects and remote file deletion.
+          byte[] cached=app.imageDisk.get(key);
+          if(cached!=null){
+            bitmap=MediaFiles.decode(cached,640);
+            if(bitmap!=null)app.thumbnails.images.put(key,bitmap);
+          }
+        }
         if(bitmap==null) {
           ByteArrayOutputStream bytes=new ByteArrayOutputStream();reader.read(source,bytes,active);
-          MediaFiles.check(active);bitmap=MediaFiles.decode(bytes.toByteArray(),640);
+          MediaFiles.check(active);fetched=bytes.toByteArray();bitmap=MediaFiles.decode(fetched,640);
           if(!active.getAsBoolean()){bitmap.recycle();MediaFiles.check(active);}
           app.thumbnails.images.put(key,bitmap);
+          if(fetched.length>0)app.imageDisk.put(key,fetched);
         }
         final Bitmap image=bitmap;
         app.main.post(()->{

@@ -578,7 +578,9 @@ public final class MainActivity extends Activity {
     projectLabel.setText(UiText.get(R.string.main_text_102) + (project.isEmpty() ? UiText.get(R.string.main_text_103) : project));
     projectLabel.setVisibility(app.profile == null ? View.GONE : View.VISIBLE);
     usageLabel.setText(app.usage.summary());
-    usageLabel.setVisibility(app.connected ? View.VISIBLE : View.GONE);
+    // Usage row is the ChatGPT plan meter; on a custom-API override it is
+    // meaningless (the codex backend isn't serving) — hide until restored.
+    usageLabel.setVisibility(app.connected && !app.customOverride ? View.VISIBLE : View.GONE);
     boolean recovering=app.recoveryInProgress();
     // Fade only while a resume is mid-flight; plain read-only history (even while
     // loading or connected-but-idle) always keeps the actions available.
@@ -606,6 +608,14 @@ public final class MainActivity extends Activity {
     status.setTextColor(app.connected ? Color.parseColor(isDark()?"#309470":"#247A5B") : muted);
     error.setText(app.error.isEmpty() ? "" : app.error.split("\n", 2)[0] + UiText.get(R.string.main_text_106));
     error.setVisibility(app.error.isEmpty() ? View.GONE : View.VISIBLE);
+    // Usage-limit escape hatch: shown only while the PRIMARY backend reported
+    // a limit AND a ready custom API is configured. Once switched over, the way
+    // back lives in the model picker's switch row — no persistent banner.
+    if (app.mainModelLimited && !app.customOverride && app.customApi().ready()) {
+      error.setText(UiText.get(R.string.main_extra_72));
+      error.setVisibility(View.VISIBLE);
+      error.setOnClickListener(v -> switchToCustomModel());
+    } else error.setOnClickListener(null);
     renderAttachments();
     renderQueuedMessage();
     updateSend();
@@ -1556,7 +1566,7 @@ public final class MainActivity extends Activity {
 
   private void backgroundSettings() {
     // Compact action menu: no long explanation wall; header hints the purpose.
-    CenteredMenu.show(this,fg,muted,null,new String[]{UiText.get(R.string.ui_battery_unrestricted),UiText.get(R.string.ui_notifications_and_live_activities),"Tailscale",UiText.get(R.string.ui_interface_language),UiText.get(R.string.main_text_21),UiText.get(R.string.main_text_20)},which->{
+    CenteredMenu.show(this,fg,muted,null,new String[]{UiText.get(R.string.ui_battery_unrestricted),UiText.get(R.string.ui_notifications_and_live_activities),"Tailscale",UiText.get(R.string.ui_interface_language),UiText.get(R.string.main_text_21),UiText.get(R.string.main_text_20),UiText.get(R.string.main_extra_62)},which->{
       if(which==0) {
         try { startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
             android.net.Uri.parse("package:" + getPackageName()))); }
@@ -1566,6 +1576,82 @@ public final class MainActivity extends Activity {
       else if (which == 3) chooseLanguage();
       else if (which == 4) chooseTheme();
       else if (which == 5) chooseFontSize();
+      else if (which == 6) customApiDialog();
+    });
+  }
+
+  /** Manage the list of custom OpenAI-compatible APIs (add / edit / delete / activate). */
+  private void customApiDialog() {
+    CustomApiConfig c = app.customApi();
+    java.util.List<String> rows = new java.util.ArrayList<>();
+    for (CustomApiConfig.Entry e : c.entries)
+      rows.add((e.id.equals(c.activeId) ? "✓ " : "") + (e.name.isEmpty() ? e.model : e.name) + "  ·  " + e.model);
+    rows.add("＋ " + UiText.get(R.string.main_extra_75));
+    CenteredMenu.show(this, fg, muted, UiText.get(R.string.main_extra_67), rows.toArray(new String[0]), which -> {
+      if (which == rows.size() - 1) { editCustomApiEntry(c, null); return; }
+      final CustomApiConfig.Entry entry = c.entries.get(which);
+      CenteredMenu.show(this, fg, muted, null, new String[]{
+              (entry.id.equals(c.activeId) ? "✓ " : "") + UiText.get(R.string.main_extra_76),
+              UiText.get(R.string.main_extra_80),  // 编辑
+              UiText.get(R.string.main_extra_77)},
+          action -> {
+            if (action == 0) {
+              c.activeId = entry.id;
+              app.saveCustomApi(c);
+            } else if (action == 1) editCustomApiEntry(c, entry);
+            else {
+              CenteredMenu.show(this, fg, muted, null, new String[]{UiText.get(R.string.main_extra_78)}, confirm -> {
+                c.entries.remove(entry);
+                if (c.activeId.equals(entry.id)) c.activeId = c.entries.isEmpty() ? "" : c.entries.get(0).id;
+                app.saveCustomApi(c);
+              });
+            }
+          });
+    }, null, .80f);
+  }
+
+  /** Create or edit one custom API entry. */
+  private void editCustomApiEntry(CustomApiConfig c, CustomApiConfig.Entry existing) {
+    boolean isNew = existing == null;
+    CustomApiConfig.Entry e = isNew ? new CustomApiConfig.Entry() : existing;
+    if (isNew) e.id = java.util.UUID.randomUUID().toString();
+    LinearLayout box = new LinearLayout(this);
+    box.setOrientation(LinearLayout.VERTICAL);
+    box.setPadding(dp(20), dp(12), dp(20), dp(4));
+    EditText name = ui.field(box, UiText.get(R.string.main_extra_79), e.name, "DeepSeek / OpenRouter / GLM", false);
+    EditText baseUrl = ui.field(box, UiText.get(R.string.main_extra_64), e.baseUrl.isEmpty() ? CustomApiConfig.DEFAULT_BASE_URL : e.baseUrl, CustomApiConfig.DEFAULT_BASE_URL, false);
+    EditText apiKey = ui.field(box, UiText.get(R.string.main_extra_65), e.apiKey, "", false);
+    EditText model = ui.field(box, UiText.get(R.string.main_extra_66), e.model.isEmpty() ? CustomApiConfig.DEFAULT_MODEL : e.model, CustomApiConfig.DEFAULT_MODEL, false);
+    new AlertDialog.Builder(this)
+        .setView(box)
+        .setPositiveButton(UiText.get(R.string.main_text_2), (d, w) -> {
+          e.name = name.getText().toString().trim();
+          e.baseUrl = baseUrl.getText().toString().trim();
+          e.apiKey = apiKey.getText().toString().trim();
+          e.model = model.getText().toString().trim();
+          if (e.name.isEmpty()) e.name = e.model;
+          if (isNew) c.entries.add(e);
+          if (c.activeId.isEmpty() && CustomApiConfig.ready(e)) c.activeId = e.id;
+          app.saveCustomApi(c);
+          toast(UiText.get(R.string.main_extra_68));
+        })
+        .setNegativeButton(UiText.get(R.string.main_text_11), null)
+        .show();
+  }
+
+  /** Confirm + execute the switch to the custom-model API for this connection. */
+  void switchToCustomModel() {
+    CenteredMenu.show(this, fg, muted, null, new String[]{UiText.get(R.string.main_extra_69)}, which ->
+        app.switchToCustomModel(failure -> toast(UiText.get(R.string.main_extra_70) + failure)));
+  }
+
+  /** Leave custom-model mode: reconnect the original codex profile as configured. */
+  void confirmRestorePrimary() {
+    CenteredMenu.show(this, fg, muted, null, new String[]{UiText.get(R.string.main_extra_73)}, which -> {
+      Profile original = app.profile == null ? null : app.vault.profiles.stream()
+          .filter(saved -> saved.id.equals(app.profile.id)).findFirst().orElse(null);
+      if (original == null) { toast(UiText.get(R.string.main_extra_74)); return; }
+      app.connect(original);
     });
   }
 
@@ -1607,13 +1693,47 @@ public final class MainActivity extends Activity {
         + UiText.get(R.string.main_extra_25) + (app.threadTitle.isEmpty() ? UiText.get(R.string.main_text_173) : app.threadTitle)
         + UiText.get(R.string.main_extra_26) + (app.threadId.isEmpty() ? UiText.get(R.string.main_extra_27) : app.threadId)
         + UiText.get(R.string.main_extra_28) + (!app.connected ? UiText.get(R.string.main_text_185) : app.readOnly ? UiText.get(R.string.main_text_186) : app.busy ? UiText.get(R.string.main_extra_4) : UiText.get(R.string.main_text_187));
-    new AlertDialog.Builder(this).setTitle(UiText.get(R.string.main_text_184)).setMessage(details)
+    // Context usage: only when a tokenUsage push has been received for this thread.
+    if (app.ctxUsedTokens >= 0) {
+      String used = formatTokens(app.ctxUsedTokens);
+      details += "\n" + UiText.get(R.string.main_extra_57)
+          + (app.ctxTotalTokens > 0
+              ? used + " / " + formatTokens(app.ctxTotalTokens) + " (" + Math.round(app.ctxUsedTokens * 100.0 / app.ctxTotalTokens) + "%)"
+              : used);
+    }
+    final String info = details;
+    boolean compactable = app.connected && !app.threadId.isEmpty() && !app.busy
+        && app.profile != null && "codex".equals(app.profile.runtime);
+    AlertDialog.Builder builder = new AlertDialog.Builder(this).setTitle(UiText.get(R.string.main_text_184)).setMessage(details)
         .setPositiveButton(UiText.get(R.string.main_text_2), null)
         .setNeutralButton(UiText.get(R.string.main_text_8), (d, w) -> {
           android.content.ClipboardManager clipboard = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-          clipboard.setPrimaryClip(android.content.ClipData.newPlainText(UiText.get(R.string.main_text_184), details));
+          clipboard.setPrimaryClip(android.content.ClipData.newPlainText(UiText.get(R.string.main_text_184), info));
           toast(UiText.get(R.string.main_text_158));
-        }).show();
+        });
+    if (compactable) builder.setNegativeButton(UiText.get(R.string.main_extra_58), (d, w) -> compactConversation());
+    builder.show();
+  }
+
+  private static String formatTokens(long tokens) {
+    if (tokens >= 1000) {
+      long k = tokens / 1000;
+      return (tokens % 1000 >= 500 ? k + 0.5 : k) >= 1000
+          ? String.format(Locale.ROOT, "%.1fM", tokens / 1000000.0)
+          : String.format(Locale.ROOT, "%.1fk", tokens / 1000.0);
+    }
+    return String.valueOf(tokens);
+  }
+
+  private void compactConversation() {
+    if (!app.connected || app.threadId.isEmpty() || app.busy) {
+      toast(UiText.get(R.string.main_extra_59));
+      return;
+    }
+    app.compactThread(app.threadId, failure -> {
+      if (failure == null) toast(UiText.get(R.string.main_extra_60));
+      else toast(UiText.get(R.string.main_extra_61) + (failure.getMessage() == null ? "" : failure.getMessage()));
+    });
   }
 
   private void openTerminalDialog() {

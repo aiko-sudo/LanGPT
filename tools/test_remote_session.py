@@ -329,5 +329,42 @@ class PersistentSessionTest(unittest.TestCase):
             self.fail('backend process group survived its host')
 
 
+class SpawnEnvTest(unittest.TestCase):
+    """Custom-API channel must never inherit another engine's credentials
+    (engine-isolation pattern absorbed from OpenMausBot, V2.0)."""
+
+    def test_custom_channel_strips_foreign_provider_keys(self):
+        spec = importlib.util.spec_from_file_location('remote_session_spawn_env', HOST)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory(prefix='spawn-env-test-') as tmp:
+            # Empty HOME: no ~/.codex/proxy.env, so spawn_env copies os.environ.
+            sample = {'OPENAI_API_KEY': 'sk-leak', 'ANTHROPIC_API_KEY': 'sk-ant',
+                      'XAI_API_KEY': 'xai-1', 'DEEPSEEK_API_KEY': 'ds-1',
+                      'GROK_API_KEY': 'grok-1', 'HOME': tmp}
+            backup = {k: os.environ.get(k) for k in sample}
+            os.environ.update(sample)
+            try:
+                primary = module.spawn_env()
+                custom = module.spawn_env(strip_provider_keys=True)
+            finally:
+                for k, v in backup.items():
+                    if v is None:
+                        os.environ.pop(k, None)
+                    else:
+                        os.environ[k] = v
+            # Primary (codex) channel keeps its own environment untouched.
+            self.assertEqual(primary.get('OPENAI_API_KEY'), 'sk-leak')
+            self.assertEqual(primary.get('ANTHROPIC_API_KEY'), 'sk-ant')
+            # Custom (opencode) channel drops every foreign provider key.
+            for key in sample:
+                if key == 'HOME':
+                    continue
+                self.assertNotIn(key, custom)
+            # PATH augmentation still applies on the custom channel.
+            self.assertIn('npm-global/bin', custom.get('PATH', ''))
+
+
 if __name__ == '__main__':
     unittest.main()

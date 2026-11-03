@@ -77,10 +77,10 @@ public class PrefetchTest {
     activity=(SRC/'MainActivity.java').read_text();browser=(SRC/'SftpBrowser.java').read_text()
     settings=method(activity,'  private void showSettings()')
     menu=(SRC/'CenteredMenu.java').read_text()
-    assert 'label.setGravity(Gravity.CENTER)' in menu and 'widthPixels*.60f' in menu
+    assert 'label.setGravity(Gravity.CENTER)' in menu and 'widthPixels*widthFraction' in menu
     assert 'CenteredMenu.show(this,fg,muted,version,options' in settings and 'getPackageInfo' in settings
     assert 'header.setGravity(Gravity.LEFT' in menu and 'divider(activity,muted' in menu
-    assert 'i<=3' in menu and 'i>=7' in menu and 'widthPixels*.60f' in menu
+    assert 'i<=3' in menu and 'i>=7' in menu and 'widthPixels*widthFraction' in menu
     assert 'private void showMainMenu() { showSettings(); }' in activity
     assert 'ui.button("刷新"' not in browser and 'new PullRefreshScrollView' in browser
     assert 'attachHoldActions' in browser and 'offerSave(full,name,size)' in browser and 'private int sortMode=1;' in browser

@@ -59,6 +59,6 @@ class ClipboardTest {
     activity=(SRC/'MainActivity.java').read_text();panel=(SRC/'WorkPanel.java').read_text();menu=(SRC/'CenteredMenu.java').read_text()
     assert 'CenteredMenu.show(this,fg,muted,version,options' in activity and 'CenteredMenu.show(activity, ui.fg' in panel
     assert 'new String[]{UiText.get(R.string.work_text_081), UiText.get(R.string.work_text_082)}' in panel and '当前项目与对话' not in panel
-    assert 'label.setGravity(Gravity.CENTER)' in menu and 'widthPixels*.60f' in menu and '.setTitle(' not in menu
+    assert 'label.setGravity(Gravity.CENTER)' in menu and 'widthPixels*widthFraction' in menu and '.setTitle(' not in menu
     print('PASS shared title-free centered 60%-width menu and exactly two work actions (source checks)')
 if __name__=='__main__':main()
