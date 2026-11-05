@@ -448,6 +448,7 @@ public final class RemoteApp extends Application {
     pendingNavigation = "";
     leaveIdleConversation();
     conversationStore.select("");
+    items.clear(); pendingContextPrefix = ""; threadCwd = ""; readOnly = false;
     restoreLastSessionChoices();
     homeVisible = true;
     changed();
@@ -494,7 +495,16 @@ public final class RemoteApp extends Application {
     java.util.List<ChatItem> history = new ArrayList<>(source.items);
     String prefix = buildContextPrefix(history);
     String title = source.title, cwd = source.cwd;
+    String draft = source.draft, unsent = source.unsent;
+    List<String> images = new ArrayList<>(source.images);
+    List<FileAttachment> files = new ArrayList<>(source.files);
+    Map<String, android.graphics.Bitmap> previews = new HashMap<>(source.previews);
     select("");
+    source.draft = ""; source.unsent = ""; source.images.clear(); source.files.clear(); source.previews.clear();
+    draftText = draft; unsentText = unsent;
+    draftImages.clear(); draftImages.addAll(images);
+    draftFiles.clear(); draftFiles.addAll(files);
+    draftImagePreviews.clear(); draftImagePreviews.putAll(previews);
     if (model.isEmpty()) model = preferences.lastSessionModel();
     items.clear(); items.addAll(history);
     threadTitle = title; threadCwd = cwd;
@@ -683,6 +693,14 @@ public final class RemoteApp extends Application {
     });
   }
 
+  private String otherThreadCwd(String id) {
+    for (int i = 0; i < otherChannelThreads.length(); i++) {
+      JSONObject row = otherChannelThreads.optJSONObject(i);
+      if (row != null && id.equals(row.optString("id")) && row.optString("cwd").startsWith("/")) return row.optString("cwd");
+    }
+    return "";
+  }
+
   /** Open a conversation from the OTHER channel by fetching its history
    * through the bridge (readOther); the next prompt continues the task on
    * the current channel with the context prefix. */
@@ -695,6 +713,11 @@ public final class RemoteApp extends Application {
     request("thread/readOther", Json.obj("threadId", id), r -> {
       conversationLoads.remove(id);
       boolean selected = id.equals(threadId);
+      JSONObject thread = Json.object(r, "thread");
+      if (!thread.optString("cwd").startsWith("/")) {
+        String cwd = otherThreadCwd(id);
+        if (!cwd.isEmpty()) try { thread.put("cwd", cwd); } catch (JSONException ignored) {}
+      }
       inConversation(id, () -> applyThread(r, id, true));
       if (selected) checkpoint();
       ConversationState cached = conversationStore.get(id);
@@ -720,6 +743,7 @@ public final class RemoteApp extends Application {
       if (!channel.equals(profile.runtime)) {
         if (cached != null && !cached.items.isEmpty()) {
           cached.runtime = channel;   // backfill for older caches
+          if (cached.cwd.isEmpty()) cached.cwd = otherThreadCwd(id);
           openCrossChannelConversation(cached);
         } else {
           readOtherThread(id, channel);   // fetch from the other channel's store
@@ -1097,6 +1121,7 @@ public final class RemoteApp extends Application {
     conversationStore.clear();
     permissionMode = PermissionMode.INHERIT;
     profile = p;
+    new UsageCache(this).restore(p, usage);
     if(!sameHost)deletedThreadIds.clear();
     // Restart-proof deletion: reload this host's persisted tombstone ids (the
     // opencode store never drops deleted sessions on its own).
@@ -2057,8 +2082,10 @@ public final class RemoteApp extends Application {
 
   private int usageAttempt;
 
-  public void refreshUsage() {
-    if (!connected || usage.loading) return;
+  public void refreshUsage() { refreshUsage(false); }
+
+  public void refreshUsage(boolean force) {
+    if (!connected || usage.loading || !new UsageCache(this).claim(profile, "limits", force)) return;
     usage.loading = true;
     changed();
     final int attempt = ++usageAttempt;
@@ -2070,6 +2097,7 @@ public final class RemoteApp extends Application {
           usageAttempt++;
           usage.loading = false;
           usage.update(r, true);
+          new UsageCache(this).save(profile, "limits", r);
           changed();
         },
         failure -> {
@@ -2153,13 +2181,16 @@ public final class RemoteApp extends Application {
     }
   }
 
-  public void refreshUsageStats() {
-    if (!connected) return;
+  public void refreshUsageStats() { refreshUsageStats(false); }
+
+  public void refreshUsageStats(boolean force) {
+    if (!connected || !new UsageCache(this).claim(profile, "stats", force)) return;
     request(
         "account/usage/read",
         new JSONObject(),
         r -> {
           usage.updateStats(r);
+          new UsageCache(this).save(profile, "stats", r);
           changed();
         },
         failure -> {

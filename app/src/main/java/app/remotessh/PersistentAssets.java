@@ -9,7 +9,7 @@ import java.io.InputStream;
 final class PersistentAssets {
   static byte[] host(Context context) throws IOException {
     ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-    for (String asset : new String[] {"cli_events.py", "cli_host.py", "remote_session.py"}) {
+    for (String asset : new String[] {"cli_events.py", "cli_host.py", "cross_channel_live.py", "remote_session.py"}) {
       try (InputStream input = context.getAssets().open(asset)) {
         byte[] buffer = new byte[8192]; int count;
         while ((count = input.read(buffer)) != -1) bytes.write(buffer, 0, count);

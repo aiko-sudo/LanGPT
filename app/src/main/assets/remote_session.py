@@ -23,8 +23,17 @@ import tempfile
 import time
 from pathlib import Path
 
+# Standalone development/tests load the adjacent helper; bundled installs
+# prepend it to this script and therefore need no remote module files.
+if 'active_rollout_paths' not in globals():
+    import importlib.util
+    _live_spec = importlib.util.spec_from_file_location('cross_channel_live', Path(__file__).with_name('cross_channel_live.py'))
+    _live_module = importlib.util.module_from_spec(_live_spec)
+    _live_spec.loader.exec_module(_live_module)
+    active_rollout_paths = _live_module.active_rollout_paths
+
 LIMIT = 32 * 1024 * 1024
-SCRIPT_VERSION = 38  # bump when host bridge behavior changes; idle daemons auto-upgrade
+SCRIPT_VERSION = 39  # bump when host bridge behavior changes; idle daemons auto-upgrade
 
 # Created in the working directory on first thread/start: keeps the model from
 # reading PC secrets to answer "what am I bound to" style questions. Without a
@@ -396,12 +405,16 @@ def codex_active_rows():
 
 def codex_other_sessions(limit=30):
     tomb = _latest_tombstones()
+    candidates = codex_active_rows()
+    live = active_rollout_paths([row[4] for row in candidates if row[0] in tomb and row[4]])
     rows = []
-    for sid, title, cwd, updated, rollout in codex_active_rows():
-        if sid in tomb or not rollout or not Path(rollout).is_file():
+    for sid, title, cwd, updated, rollout in candidates:
+        if not rollout or not Path(rollout).is_file() or (sid in tomb and rollout not in live):
             continue
-        rows.append({'id': sid, 'name': title or sid, 'cwd': cwd or '',
-                     'updatedAt': int(updated or 0)})
+        row = {'id': sid, 'name': title or sid, 'cwd': cwd or '', 'updatedAt': int(updated or 0)}
+        if rollout in live:
+            row['status'] = {'type': 'active'}
+        rows.append(row)
         if len(rows) >= limit:
             break
     return rows
@@ -409,10 +422,11 @@ def codex_other_sessions(limit=30):
 
 def codex_other_turns(thread_id, max_lines=4000):
     """Rebuild phone-protocol turns from a codex rollout file (read-only)."""
-    if not thread_id or thread_id in _latest_tombstones():
+    if not thread_id:
         raise FileNotFoundError('Codex conversation not found')
     matches = [Path(row[4]) for row in codex_active_rows() if row[0] == thread_id and row[4]]
-    if not matches or not matches[0].is_file():
+    if (not matches or not matches[0].is_file() or
+            (thread_id in _latest_tombstones() and str(matches[0]) not in active_rollout_paths([matches[0]]))):
         raise FileNotFoundError('Codex conversation not found')
     turns = []
     with matches[0].open(encoding='utf-8', errors='replace') as fh:

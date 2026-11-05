@@ -118,7 +118,7 @@ public final class UsageLimits {
 
   public String details() {
     StringBuilder result = new StringBuilder();
-    if (!error.isEmpty()) result.append(displayError());
+    // 错误只由 summary() 单行展示（usageHeaderText 已含它）；这里重复拼接会出现两行同文本。
     for (Map.Entry<String, JSONObject> entry : buckets.entrySet()) {
       JSONObject b = entry.getValue();
       if (result.length() > 0) result.append("\n\n");

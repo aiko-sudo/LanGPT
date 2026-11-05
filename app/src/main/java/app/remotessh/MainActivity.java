@@ -1374,6 +1374,13 @@ public final class MainActivity extends Activity {
       openDirectoryPicker();
       return;
     }
+    // Home shows the connection's configured root directory — a conversation
+    // started there would have nowhere to live. Route through the project
+    // picker instead; in-chat/history already carry a concrete project cwd.
+    if (app.homeVisible) {
+      openDirectoryPicker();
+      return;
+    }
     app.draftText=input.getText().toString();
     app.newChat();
   }
@@ -1852,8 +1859,8 @@ public final class MainActivity extends Activity {
 
   private void usageInfo(boolean forceRefresh) {
     if (forceRefresh || !app.usage.fresh(USAGE_CACHE_MS)) {
-      app.refreshUsage();
-      app.refreshUsageStats();
+      app.refreshUsage(forceRefresh);
+      app.refreshUsageStats(forceRefresh);
     }
     // Full statistics live directly in the header (the menu scrolls); the only
     // action is 刷新 at the top, closing happens by tapping outside or back.
@@ -1879,7 +1886,8 @@ public final class MainActivity extends Activity {
     if (summary.startsWith("剩余用量 · ")) summary = summary.substring("剩余用量 · ".length());
     else if (summary.startsWith("Remaining usage · ")) summary = summary.substring("Remaining usage · ".length());
     StringBuilder header = new StringBuilder(UiText.get(R.string.main_extra_34)).append(summary);
-    header.append("\n\n").append(app.usage.loading ? UiText.get(R.string.main_extra_35) : app.usage.details());
+    String body = app.usage.loading ? UiText.get(R.string.main_extra_35) : app.usage.details();
+    if (!body.isEmpty()) header.append("\n\n").append(body);
     if (!app.usage.error.isEmpty()) header.append(UiText.get(R.string.main_extra_36));
     return header.toString();
   }

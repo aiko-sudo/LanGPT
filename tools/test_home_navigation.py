@@ -27,7 +27,8 @@ import android.os.Looper;
 class RemoteApp {
  final Looper main=Looper.myLooper(); final ConversationStore conversationStore=new ConversationStore(this);
  String threadId="", model="", reasoningEffort="", permissionMode="", pendingNavigation="";
- boolean pendingHomeLanding,homeVisible,busy; int progress, approvals, changes;
+ boolean pendingHomeLanding,homeVisible,busy,readOnly; int progress, approvals, changes;
+ final java.util.List<Object> items=new java.util.ArrayList<>(); String pendingContextPrefix="",threadCwd="";
  Profile profile=new Profile();
  void changed(){if(!conversationStore.deferChanges())changes++;}
  void leaveIdleConversation(){}

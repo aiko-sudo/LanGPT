@@ -12,7 +12,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / 'app/src/main/assets'
 ns = {'__name__': 'cli_fixture'}
 exec(compile((ASSETS / 'cli_events.py').read_text() + '\n' + (ASSETS / 'cli_host.py').read_text() + '\n' +
-             (ASSETS / 'remote_session.py').read_text(), 'bundled-host', 'exec'), ns)
+             (ASSETS / 'cross_channel_live.py').read_text() + '\n' + (ASSETS / 'remote_session.py').read_text(), 'bundled-host', 'exec'), ns)
 
 
 class Peer:

@@ -43,11 +43,11 @@ public class Harness {
     has(u.summary(), "80%"); has(u.summary(), "Secondary 70%");
     u.updateStats(new JSONObject("{\"summary\":{\"lifetimeTokens\":1234567,\"currentStreakDays\":2,\"longestStreakDays\":3}}"));
     has(u.details(), "Lifetime: 1.2M"); has(u.details(), "Current streak: 2 days");
-    u.fail(new Exception("offline")); has(u.summary(), "Update failed"); has(u.details(), "Usage unavailable: ");
+    u.fail(new Exception("offline")); has(u.summary(), "Update failed"); if (u.details().contains("Usage unavailable")) throw new AssertionError("single-line error");
     Locale.setDefault(Locale.SIMPLIFIED_CHINESE);
     eq(ModelOptions.displayName(models, ""), "默认模型"); eq(ModelOptions.label("high"), "高");
     eq(ServiceTierOptions.label("default", m), "普通");
-    has(u.summary(), "剩余用量"); has(u.details(), "用量暂不可用："); has(u.details(), "累计：123.5万");
+    has(u.summary(), "剩余用量"); has(u.summary(), "更新失败"); if (u.details().contains("用量暂不可用")) throw new AssertionError("single-line error zh"); has(u.details(), "累计：123.5万");
     u.clear(); has(u.summary(), "连接后查看剩余用量");
     Locale.setDefault(Locale.US); has(u.summary(), "Connect to view");
     UsageLimits.setLocaleProvider(() -> Locale.CHINESE);

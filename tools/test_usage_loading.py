@@ -42,7 +42,7 @@ public class Harness {
     check(!usage.loading, "failure must clear loading");
     check(usage.summary().contains("用量暂不可用"), "summary surfaces the failure: " + usage.summary());
     check(usage.summary().contains("failed to fetch"), "summary keeps the reason: " + usage.summary());
-    check(usage.details().contains("用量暂不可用"), "details surface the failure");
+    check(!usage.details().contains("用量暂不可用"), "failure shown once in summary only");
     check(usage.error.contains("用量暂不可用"), "error field readable by the UI");
 
     JSONObject payload = new JSONObject();
@@ -63,7 +63,7 @@ public class Harness {
     usage.fail(new java.io.IOException("读取超时，请重试"));
     check(usage.summary().contains("更新失败"),
         "later failure on stale data is flagged: " + usage.summary());
-    check(usage.details().contains("超时"), "stale details keep the watchdog reason");
+    check(!usage.details().contains("超时"), "stale failure reason stays in summary only");
     usage.update(payload, true);
     check(usage.fresh(60L * 60L * 1000L), "fresh data is served from cache");
     usage.fetchedAt = System.currentTimeMillis() - 2L * 60L * 60L * 1000L;

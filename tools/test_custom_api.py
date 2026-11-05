@@ -257,7 +257,7 @@ class Wiring(unittest.TestCase):
         self.assertIn("def restart_server(self):", bridge)
         self.assertIn("self.command = command", bridge)
         self.assertIn("if method == 'thread/unsubscribe':", bridge)
-        self.assertIn("SCRIPT_VERSION = 38", bridge)
+        self.assertIn("SCRIPT_VERSION = 39", bridge)
         # Deletion must survive everything: opencode's DELETE API is a fake
         # success (200 text/html), so the bridge keeps persisted tombstones
         # honored by thread/list and thread/read.

@@ -56,6 +56,7 @@ def main():
         path = Path(path)
         files = {
             'android/os/Looper.java': 'package android.os; public class Looper { static final Looper MAIN=new Looper(); public static Looper myLooper(){return MAIN;} public Looper getLooper(){return MAIN;} }',
+            'android/graphics/Bitmap.java': 'package android.graphics; public class Bitmap {}',
             'org/json/JSONObject.java': 'package org.json; public class JSONObject {}',
             'app/remotessh/ConversationStore.java': (SRC / 'ConversationStore.java').read_text(),
             'app/remotessh/RemoteApp.java': '''package app.remotessh;
@@ -73,8 +74,9 @@ class RemoteApp {
  void leaveIdleConversation(){} boolean currentThreadRunning(){return busy;} void releaseThread(String id){loadedThreads.remove(id);}
  void readThread(String id,boolean readonly){if(!readonly)throw new AssertionError("not read only");reads++;}
  String conversationChannel(String id,String runtime){return runtime.isEmpty()?"codex":runtime;}
- void readOtherThread(String id,String channel){}
- String error="",state="",threadTitle="",threadCwd="",pendingContextPrefix="";
+ String otherThreadCwd(String id){return "/fixture";} void readOtherThread(String id,String channel){}
+ String error="",state="",threadTitle="",threadCwd="",pendingContextPrefix="",draftText="",unsentText="";
+ final List<String> draftImages=new ArrayList<>();final List<FileAttachment> draftFiles=new ArrayList<>();final Map<String,android.graphics.Bitmap> draftImagePreviews=new HashMap<>();
  final List<ChatItem> items=new ArrayList<>();
  static String buildContextPrefix(List<ChatItem> items){return items.isEmpty()?"":items.get(0).text;}
  void testCross(ConversationState s){openCrossChannelConversation(s);}
@@ -87,13 +89,14 @@ class RemoteApp {
             'app/remotessh/ConversationState.java': '''package app.remotessh;
 import java.util.*;import org.json.JSONObject;
 class ConversationState {
- String threadId="",model,effort,permission,runtime="",title="",cwd=""; final List<ChatItem> items=new ArrayList<>(); boolean busy,replaying,readOnly;int progress;
+ String threadId="",model,effort,permission,runtime="",title="",cwd="",draft="",unsent=""; final List<String> images=new ArrayList<>();final List<FileAttachment> files=new ArrayList<>();final Map<String,android.graphics.Bitmap> previews=new HashMap<>(); final List<ChatItem> items=new ArrayList<>(); boolean busy,replaying,readOnly;int progress;
  final List<JSONObject> approvals=new ArrayList<>();
- void capture(RemoteApp a){threadId=a.threadId;busy=a.busy;replaying=a.replaying;readOnly=a.readOnly;progress=a.progress;title=a.threadTitle;cwd=a.threadCwd;items.clear();items.addAll(a.items);}
- void apply(RemoteApp a){a.threadId=threadId;a.busy=busy;a.replaying=replaying;a.readOnly=readOnly;a.progress=progress;a.threadTitle=title;a.threadCwd=cwd;a.items.clear();a.items.addAll(items);}
+ void capture(RemoteApp a){threadId=a.threadId;busy=a.busy;replaying=a.replaying;readOnly=a.readOnly;progress=a.progress;title=a.threadTitle;cwd=a.threadCwd;draft=a.draftText;unsent=a.unsentText;images.clear();images.addAll(a.draftImages);files.clear();files.addAll(a.draftFiles);previews.clear();previews.putAll(a.draftImagePreviews);items.clear();items.addAll(a.items);}
+ void apply(RemoteApp a){a.threadId=threadId;a.busy=busy;a.replaying=replaying;a.readOnly=readOnly;a.progress=progress;a.threadTitle=title;a.threadCwd=cwd;a.draftText=draft;a.unsentText=unsent;a.draftImages.clear();a.draftImages.addAll(images);a.draftFiles.clear();a.draftFiles.addAll(files);a.draftImagePreviews.clear();a.draftImagePreviews.putAll(previews);a.items.clear();a.items.addAll(items);}
 }
 class Profile {String cwd="",lastThread="",runtime="codex";}
 class ChatItem {String text;ChatItem(String t){text=t;}}
+class FileAttachment {}
 ''',
             'app/remotessh/HistoryNavigationTest.java': '''package app.remotessh;
 public class HistoryNavigationTest {
@@ -113,8 +116,8 @@ public class HistoryNavigationTest {
  a.landHome(); a.conversationStore.dispatch("foreign",()->{a.items.add(new ChatItem("old context"));});
  ConversationState foreign=a.conversationStore.get("foreign"); a.testCross(foreign);
  check(a.readOnly && !a.homeVisible && a.threadId.equals("foreign"),"cross-channel history remains read-only on its own page");
- a.testResume(foreign);check(!a.readOnly && !a.homeVisible && a.threadId.isEmpty() && a.pendingContextPrefix.equals("old context"),"explicit resume copies context to new channel draft");
- a.landHome();
+ a.draftText="待发送"; a.draftImages.add("image"); a.checkpoint(); a.testResume(foreign);check(a.draftText.equals("待发送") && a.draftImages.size()==1 && foreign.draft.isEmpty(),"cross-channel resume transfers the draft");check(!a.readOnly && !a.homeVisible && a.threadId.isEmpty() && a.pendingContextPrefix.equals("old context"),"explicit resume copies context to new channel draft");
+ a.landHome();check(a.homeVisible && a.threadId.isEmpty() && a.items.isEmpty() && a.pendingContextPrefix.isEmpty() && !a.readOnly,"home clears cross-channel preview and continuation");
  a.pendingHomeLanding=true;a.viewConversation("C");
  check(a.threadId.equals("C") && !a.pendingHomeLanding && a.reads==3,"explicit navigation wins and reuses pending restore");
  }

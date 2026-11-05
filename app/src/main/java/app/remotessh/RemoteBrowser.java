@@ -469,11 +469,15 @@ final class RemoteBrowser {
         if (!matches(name)) continue;
         count++;
         LinearLayout row = ui.row();
-        TextView text = ui.text("[" + thread.optString("runtime", app.profile.runtime) + "] " + (name.isEmpty() ? UiText.get(R.string.work_text_131) : name), 15);
-        text.setMaxLines(1);
-        text.setEllipsize(TextUtils.TruncateAt.END);
-        text.setPadding(0, ui.dp(12), ui.dp(12), ui.dp(12));
-        row.addView(text, new LinearLayout.LayoutParams(0, -2, 1));
+        LinearLayout labels = ui.column();
+        String cwd = thread.optString("cwd", "");
+        TextView category = ui.text("[" + thread.optString("runtime", app.profile.runtime) + "] " + cwd, 12);
+        category.setTextColor(ui.muted); category.setSingleLine(true); category.setEllipsize(TextUtils.TruncateAt.MIDDLE);
+        TextView text = ui.text(name.isEmpty() ? UiText.get(R.string.work_text_131) : name, 15);
+        text.setSingleLine(true); text.setEllipsize(TextUtils.TruncateAt.END);
+        labels.setPadding(0, ui.dp(7), ui.dp(12), ui.dp(7));
+        labels.addView(category); labels.addView(text);
+        row.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
         long age =
             Math.max(
                 0,

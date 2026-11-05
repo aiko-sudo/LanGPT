@@ -177,7 +177,7 @@ public class WorkSyncTest {
     # thread.turns; a top-level turns key left every custom-channel history
     # blank behind the read-only banner.
     bridge=(ROOT/'app/src/main/assets/remote_session.py').read_text()
-    assert "SCRIPT_VERSION = 38" in bridge
+    assert "SCRIPT_VERSION = 39" in bridge
     assert "'turns': turns}}" in bridge
     # V2.0.30 (SCRIPT 33): cross-channel recent now comes from the remote
     # source of truth (bridge listOther/readOther over codex rollout files
@@ -207,9 +207,9 @@ public class WorkSyncTest {
     # Codex Host gained a real thread/delete (rollout unlink + shared
     # tombstone); _latest_tombstones unions ALL tombstone files; read-only
     # opens never report remoteRunning (stop button hung on idle remotes).
-    assert "SCRIPT_VERSION = 38" in bridge
+    assert "SCRIPT_VERSION = 39" in bridge
     assert 'def remember_tombstone(tid):' in bridge
-    assert "if sid in tomb or not rollout or not Path(rollout).is_file():" in bridge
+    assert "sid in tomb and rollout not in live" in bridge
     host_seg2 = bridge[bridge.index('class Host:'):bridge.index('class OpenCodeHost:')]
     assert "method == 'thread/delete'" in host_seg2 and 'remember_tombstone(tid)' in host_seg2
     assert 'remoteRunning = !readonly && Json.object(thread, "status")' in appsrc2

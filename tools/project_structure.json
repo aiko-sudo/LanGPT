@@ -10,7 +10,8 @@
     "conversation_state.py": 110,
     "custom_config_transaction.py": 140,
     "cli_host.py": 280,
-    "cli_events.py": 180
+    "cli_events.py": 180,
+    "cross_channel_live.py": 100
   },
   "modules": {
     "application": [
@@ -26,7 +27,8 @@
       "ProjectVisibility",
       "RemoteApp",
       "ReplyTimestamp",
-      "TurnController"
+      "TurnController",
+      "UsageCache"
     ],
     "protocol_transport": [
       "ConnectionFailure",
