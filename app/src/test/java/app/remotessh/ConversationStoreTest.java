@@ -95,4 +95,18 @@ public class ConversationStoreTest {
     assertEquals("selected", app.threadId);
     assertEquals("selected draft", app.draftText);
   }
+
+  @Test public void carriedContextStaysWithItsConversationEvenAfterFailure() {
+    app.pendingContextPrefix = "private handoff";
+    try {
+      app.inConversation("background", () -> {
+        assertEquals("", app.pendingContextPrefix);
+        app.pendingContextPrefix = "other handoff";
+        throw new IllegalStateException("failure");
+      });
+      fail();
+    } catch (IllegalStateException expected) { }
+    assertEquals("private handoff", app.pendingContextPrefix);
+    app.inConversation("background", () -> assertEquals("other handoff", app.pendingContextPrefix));
+  }
 }

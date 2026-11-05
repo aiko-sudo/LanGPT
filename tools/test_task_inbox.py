@@ -55,7 +55,9 @@ public class TaskInboxTest {
  inbox.read("p","A",r);check(inbox.unread("p","A"),"viewing old snapshot cannot clear newer result unread");
  }
 }''')
-        sources=[str(SRC/name) for name in ['Json.java','ChatItem.java','TaskResult.java','TaskInbox.java']]
+        reply_stub=directory/'ReplyTimestamp.java'
+        reply_stub.write_text('package app.remotessh; class ReplyTimestamp { static long parse(org.json.JSONObject item){ return 0; }}')
+        sources=[str(reply_stub)]+[str(SRC/name) for name in ['Json.java','ChatItem.java','TaskResult.java','TaskInbox.java']]
         subprocess.run(['javac','-cp',str(JAR),'-d',str(directory),*sources,str(test)],check=True)
         subprocess.run(['java','-cp',str(directory)+':'+str(JAR),'app.remotessh.TaskInboxTest'],check=True)
     app=(SRC/'RemoteApp.java').read_text();panel=(SRC/'WorkPanel.java').read_text()

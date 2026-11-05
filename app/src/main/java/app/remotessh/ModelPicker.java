@@ -40,6 +40,19 @@ final class ModelPicker {
     final String[] selected = {app.model, app.reasoningEffort, app.serviceTier};
     final Profile modelProfile = app.profile;
     final String modelThread = app.threadId;
+    // Custom channel: the list shows EVERY configured API entry (name + model);
+    // picking one makes the backend rewrite the provider config for that entry
+    // and reconnect — the picker stays a plain model list for the user.
+    final List<CustomApiConfig.Entry> customEntries;
+    {
+      List<CustomApiConfig.Entry> found = null;
+      if (app.customOverride) {
+        found = new ArrayList<>();
+        for (CustomApiConfig.Entry e : app.customApi().entries) if (e.enabled) found.add(e);
+        if (found.isEmpty()) found = null; // fall back to the remote catalog
+      }
+      customEntries = found;
+    }
     LinearLayout panelView = ui.column();
     panelView.setPadding(ui.dp(20), 0, ui.dp(20), ui.dp(8));
     TextView subtitle = ui.text(UiText.get(R.string.network_text_002), 12, ui.muted);
@@ -81,7 +94,7 @@ final class ModelPicker {
     modelScroll.setPadding(ui.dp(4), ui.dp(4), ui.dp(4), ui.dp(4));
     modelScroll.setScrollBarStyle(View.SCROLLBARS_INSIDE_INSET);
     LinearLayout modelList = ui.column(); modelScroll.addView(modelList);
-    int modelCount = app.models.length() + 1;
+    int modelCount = customEntries != null && !customEntries.isEmpty() ? customEntries.size() : app.models.length();
     LinearLayout.LayoutParams modelScrollParams = new LinearLayout.LayoutParams(-1, ui.dp(Math.min(240, modelCount * 52 + 8)));
     modelScrollParams.topMargin = ui.dp(8);
     panelView.addView(modelScroll, modelScrollParams);
@@ -126,18 +139,59 @@ final class ModelPicker {
     Dialog[] holder = new Dialog[1];
     Runnable[] redraw = new Runnable[1];
     redraw[0] = () -> {
-      catalogStatus.setText(app.modelsStatus.isEmpty() ? UiText.get(R.string.network_text_009) : app.modelsStatus);
-      modelScroll.getLayoutParams().height = ui.dp(Math.min(240, (app.models.length() + 1) * 52 + 8));
+      boolean customList = customEntries != null && !customEntries.isEmpty();
+      catalogStatus.setText(customList
+          ? activity.getString(R.string.main_extra_82, customEntries.size())
+          : app.modelsStatus.isEmpty() ? UiText.get(R.string.network_text_009) : app.modelsStatus);
+      modelScroll.getLayoutParams().height = ui.dp(Math.min(240, (customList ? customEntries.size() : app.models.length()) * 52 + 8));
       modelScroll.requestLayout();
       modelList.removeAllViews();
-      for (int i = -1; i < app.models.length(); i++) {
-        JSONObject model = i < 0 ? null : app.models.optJSONObject(i);
-        if (i >= 0 && model == null) continue;
-        String id = model == null ? "" : ModelOptions.id(model);
+      if (customList) {
+        // Selection is keyed by entry id: inherit the active entry, fall back to the first.
+        boolean listed = false;
+        for (CustomApiConfig.Entry e : customEntries) if (e.id.equals(selected[0])) { listed = true; break; }
+        if (!listed) {
+          String activeId = app.customApi().activeId;
+          selected[0] = "";
+          for (CustomApiConfig.Entry e : customEntries) if (e.id.equals(activeId)) { selected[0] = e.id; break; }
+          if (selected[0].isEmpty()) selected[0] = customEntries.get(0).id;
+        }
+        for (CustomApiConfig.Entry e : customEntries) {
+          boolean checked = selected[0].equals(e.id);
+          LinearLayout option = ui.row(); option.setPadding(ui.dp(14), 0, ui.dp(10), 0);
+          option.setBackground(ui.rounded(checked ? ui.panel : modelListBackground, 14));
+          String label = e.name.isEmpty() ? e.model : e.name + " · " + e.model;
+          TextView row = ui.text(label, 15, ui.fg);
+          row.setMaxLines(1); row.setEllipsize(TextUtils.TruncateAt.END); row.setGravity(Gravity.CENTER_VERTICAL);
+          option.addView(row, new LinearLayout.LayoutParams(0, ui.dp(52), 1));
+          if (checked) option.addView(new IconView(activity, "check", ui.fg), new LinearLayout.LayoutParams(ui.dp(26), ui.dp(26)));
+          option.setContentDescription(UiText.get(R.string.network_text_011) + e.model);
+          ui.clickable(option, () -> { selected[0] = e.id; selected[1] = ""; redraw[0].run(); });
+          modelList.addView(option);
+        }
+      } else {
+      // No "remote default" row anymore: inherit the last choice, and when
+      // there is none (or the catalog no longer offers it) fall back to the
+      // first listed model — the picker always resolves to a concrete model.
+      if (app.models.length() > 0) {
+        boolean listed = false;
+        for (int m = 0; !listed && m < app.models.length(); m++) {
+          JSONObject candidate = app.models.optJSONObject(m);
+          if (candidate != null && ModelOptions.id(candidate).equals(selected[0])) listed = true;
+        }
+        if (!listed) {
+          JSONObject first = app.models.optJSONObject(0);
+          if (first != null) selected[0] = ModelOptions.id(first);
+        }
+      }
+      for (int i = 0; i < app.models.length(); i++) {
+        JSONObject model = app.models.optJSONObject(i);
+        if (model == null) continue;
+        String id = ModelOptions.id(model);
         boolean checked = selected[0].equals(id);
         LinearLayout option = ui.row(); option.setPadding(ui.dp(14), 0, ui.dp(10), 0);
         option.setBackground(ui.rounded(checked ? ui.panel : modelListBackground, 14));
-        TextView label = ui.text(model == null ? UiText.get(R.string.network_text_010) : ModelOptions.displayName(app.models, id), 15, ui.fg);
+        TextView label = ui.text(ModelOptions.displayName(app.models, id), 15, ui.fg);
         label.setMaxLines(1); label.setEllipsize(TextUtils.TruncateAt.END); label.setGravity(Gravity.CENTER_VERTICAL);
         option.addView(label, new LinearLayout.LayoutParams(0, ui.dp(52), 1));
         if (checked) option.addView(new IconView(activity, "check", ui.fg), new LinearLayout.LayoutParams(ui.dp(26), ui.dp(26)));
@@ -148,6 +202,7 @@ final class ModelPicker {
           effortPanel.animate().alpha(1).translationY(0).setDuration(180).start();
         });
         modelList.addView(option);
+      }
       }
       JSONObject resolved = app.selectedModel(selected[0]);
       JSONObject chosen = resolved;
@@ -232,6 +287,16 @@ final class ModelPicker {
     redraw[0].run();
     TextView apply = ui.action(UiText.get(R.string.network_text_027), () -> {
       if (!app.connected || app.profile != modelProfile || !app.threadId.equals(modelThread)) {
+        dismiss(); return;
+      }
+      if (customEntries != null && !customEntries.isEmpty()) {
+        // Custom channel: a different entry = backend provider switch (rewrite
+        // config + restart + reconnect); same entry = nothing to change.
+        for (CustomApiConfig.Entry e : customEntries) {
+          if (!e.id.equals(selected[0])) continue;
+          if (!e.id.equals(app.customApi().activeId)) ((MainActivity) activity).switchCustomApiEntry(e);
+          break;
+        }
         dismiss(); return;
       }
       app.model = selected[0]; app.reasoningEffort = selected[1];

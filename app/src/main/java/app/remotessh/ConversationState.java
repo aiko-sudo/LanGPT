@@ -6,10 +6,13 @@ import org.json.JSONObject;
 /** Per-thread state. RemoteApp exposes the selected state through its existing UI facade. */
 final class ConversationState {
   String threadId = "", turnId = "", title = "", cwd = "", state = "已连接", error = "", model = "", effort = "", unsent = "", draft = "";
+  String pendingContextPrefix = "";
   PermissionMode permission = PermissionMode.INHERIT;
   PermissionMode effectivePermission = PermissionMode.INHERIT;
   ForcedApprovalController.State forcedApproval = new ForcedApprovalController.State();
   String journalPath = "";
+  String runtime = "";           // channel this conversation belongs to (codex/opencode)
+  long lastUsedAt;
   ConversationJournal journal = new ConversationJournal();
   InteractionHistory interactions = new InteractionHistory();
   long savedInteractionRevision;
@@ -24,11 +27,13 @@ final class ConversationState {
   void capture(RemoteApp a) {
     forcedApproval = a.forcedApprovalState;
     threadId=a.threadId; turnId=a.turnId; title=a.threadTitle; cwd=a.threadCwd; state=a.state; error=a.error;
+    pendingContextPrefix=a.pendingContextPrefix;
     model=a.model; effort=a.reasoningEffort; unsent=a.unsentText; draft=a.draftText;
     serviceTier=a.serviceTier; inheritedServiceTier=a.inheritedServiceTier; effectiveServiceTier=a.effectiveServiceTier;
     effectiveModel=a.effectiveModel; inheritedTierKnown=a.inheritedTierKnown; tierOverrideApplied=a.tierOverrideApplied;
     permission=a.permissionMode; busy=a.busy; steering=a.steering; readOnly=a.readOnly; remoteRunning=a.remoteRunning; replaying=a.replaying; stopping=a.stopping;
     effectivePermission=a.effectivePermissionMode;journalPath=a.journalPath;journal=a.journal;
+    runtime = RemoteApp.conversationChannel(threadId, a.profile == null ? "" : a.profile.runtime); lastUsedAt = System.currentTimeMillis();
     interactions=a.interactions;savedInteractionRevision=a.savedInteractionRevision;
     items.clear(); items.addAll(a.items); approvals.clear(); approvals.addAll(a.approvals);
     images.clear(); images.addAll(a.draftImages); previews.clear(); previews.putAll(a.draftImagePreviews);
@@ -37,6 +42,7 @@ final class ConversationState {
   void apply(RemoteApp a) {
     a.forcedApprovalState = forcedApproval;
     a.threadId=threadId; a.turnId=turnId; a.threadTitle=title; a.threadCwd=cwd; a.state=state; a.error=error;
+    a.pendingContextPrefix=pendingContextPrefix;
     a.model=model; a.reasoningEffort=effort; a.unsentText=unsent; a.draftText=draft;
     a.serviceTier=serviceTier; a.inheritedServiceTier=inheritedServiceTier; a.effectiveServiceTier=effectiveServiceTier;
     a.effectiveModel=effectiveModel; a.inheritedTierKnown=inheritedTierKnown; a.tierOverrideApplied=tierOverrideApplied;

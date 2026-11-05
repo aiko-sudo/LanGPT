@@ -32,20 +32,14 @@ final class TurnController {
   }
 
   private void sendPayload(String text,List<String> attachments,List<FileAttachment> files) {
-    if (app.isRestartingRemote() || app.recoveryInProgress() || app.replaying || !app.connected || app.busy || app.readOnly || app.attaching || (text.trim().isEmpty() && attachments.isEmpty() && files.isEmpty())) return;
+    if (app.customSwitchUnavailable) { app.error = "模型状态未知，请重新连接后再发送"; app.changed(); return; }
+    if (app.customSwitching || app.isRestartingRemote() || app.recoveryInProgress() || app.replaying || !app.connected || app.busy || app.readOnly || app.attaching || (text.trim().isEmpty() && attachments.isEmpty() && files.isEmpty())) return;
     if (!app.validateServiceTier()) return;
-    // First message after a runtime switch carries the previous conversation
-    // so the new agent keeps its context (server histories are per-runtime).
-    if (!app.pendingContextPrefix.isEmpty() && !text.trim().isEmpty()) {
-      String carried = app.pendingContextPrefix + text;
-      app.pendingContextPrefix = "";
-      sendPayloadInner(carried, attachments, files);
-      return;
-    }
     sendPayloadInner(text, attachments, files);
   }
 
   private void sendPayloadInner(final String text,List<String> attachments,List<FileAttachment> files) {
+    final String carried = app.pendingContextPrefix;
     app.rememberLastSessionChoices();
     app.busy = true;
     app.stopping = false;
@@ -59,7 +53,7 @@ final class TurnController {
       // ThreadStartParams uses kebab-case configuration values; turn overrides use tagged
       // camel-case objects.
       try {
-        if (!app.profile.cwd.isEmpty()) p.put("cwd", app.profile.cwd);
+        if (!app.currentProject().isEmpty()) p.put("cwd", app.currentProject());
         if (!app.model.isEmpty()) p.put("model", app.model);
         if (app.shouldSendServiceTier()) {
           if (app.modelSettings.configKnown && !app.inheritedTierKnown) {
@@ -80,7 +74,7 @@ final class TurnController {
               app.changed();
               return;
             }
-            app.threadCwd = Json.object(r, "thread").optString("cwd", r.optString("cwd", app.profile.cwd));
+            app.threadCwd = Json.object(r, "thread").optString("cwd", r.optString("cwd", p.optString("cwd", app.profile.cwd)));
             app.journalPath=Json.object(r,"thread").optString("path");app.journal=new ConversationJournal();app.savePermission();
             PermissionMode remotePermission=PermissionMode.fromRemote(r.opt("approvalPolicy"),r.optJSONObject("sandbox"));
             if(remotePermission!=null)app.effectivePermissionMode=remotePermission;
@@ -96,9 +90,9 @@ final class TurnController {
             app.rememberLoadedThread();
             app.threadTitle = text;
             app.save();
-            startTurn(FileAttachment.message(text,files), attachments,()->app.draftFiles.removeAll(files),null);
+            startTurn(carried + FileAttachment.message(text,files), attachments,()->{ if (app.pendingContextPrefix.equals(carried)) app.pendingContextPrefix = ""; app.draftFiles.removeAll(files); },null);
           });
-    } else startTurn(FileAttachment.message(text,files), attachments,()->app.draftFiles.removeAll(files),null);
+    } else startTurn(carried + FileAttachment.message(text,files), attachments,()->{ if (app.pendingContextPrefix.equals(carried)) app.pendingContextPrefix = ""; app.draftFiles.removeAll(files); },null);
   }
 
   static final class PendingMessage {
@@ -173,7 +167,7 @@ final class TurnController {
   }
   public void sendQueuedMessage() {
     observeSafety();
-    if (!app.connected || app.busy || app.replaying || app.readOnly || app.attaching || app.steering || app.stopping || !app.approvals.isEmpty() || app.isRestartingRemote() || app.recoveryInProgress() || app.threadId.isEmpty() || !app.validateServiceTier()) return;
+    if (app.customSwitching || app.customSwitchUnavailable || !app.connected || app.busy || app.replaying || app.readOnly || app.attaching || app.steering || app.stopping || !app.approvals.isEmpty() || app.isRestartingRemote() || app.recoveryInProgress() || app.threadId.isEmpty() || !app.validateServiceTier()) return;
     TaskQueue<PendingMessage> q=queue();
     TaskQueue.Item<PendingMessage> item=q.begin();if(item==null)return;
     PendingMessage message=item.attachments;

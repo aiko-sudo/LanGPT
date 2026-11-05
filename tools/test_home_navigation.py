@@ -30,6 +30,7 @@ class RemoteApp {
  boolean pendingHomeLanding,homeVisible,busy; int progress, approvals, changes;
  Profile profile=new Profile();
  void changed(){if(!conversationStore.deferChanges())changes++;}
+ void leaveIdleConversation(){}
  void restoreLastSessionChoices(){}
  void restoreServiceTier(ConversationState s,String id){}
  void restorePermission(ConversationState s,String id){}

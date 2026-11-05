@@ -277,6 +277,7 @@
     <string name="main_extra_59">"会话空闲且已连接时才能压缩"</string>
     <string name="main_extra_60">"已请求压缩，完成后自动刷新"</string>
     <string name="main_extra_61">"压缩失败："</string>
+    <string name="custom_context_notice">切换后，首次发送会把近期最多 20 条文字对话的一部分发送给所选 API 服务商；每条最多 600 字，附件、工具结果及更早内容不会携带。请确认内容适合分享。</string>
     <string name="main_extra_62">"自定义模型 API"</string>
     <string name="main_extra_64">"API 地址"</string>
     <string name="main_extra_65">"API Key"</string>
@@ -296,4 +297,6 @@
     <string name="main_extra_79">"名称"</string>
     <string name="main_extra_80">"编辑"</string>
     <string name="main_extra_81">"返回主模型"</string>
+    <string name="main_extra_82">"共 %1$d 个自定义模型 · 选择即切换对应 API"</string>
+    <string name="main_text_218">项目根目录（新建项目仅限于此，留空默认 ~/uclaw/project）</string>
 </resources>

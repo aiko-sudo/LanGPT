@@ -21,10 +21,11 @@ public final class IconView extends View {
   private int renderedColor;
   private Integer feedbackColor;
 
-  // Keep the 48dp hit target; only the copy glyph and its feedback use this visual slot.
+  // Copy button is 50% of the original: 48dp hit target shrunk to 24dp, and
+  // the visual feedback slot from 32dp to 16dp.
   Rect copyFeedbackBounds() {
     int diameter = Math.min(Math.min(getWidth(), getHeight()),
-        Math.round(32 * getResources().getDisplayMetrics().density));
+        Math.round(16 * getResources().getDisplayMetrics().density));
     int left = alignBottomEnd ? getWidth() - diameter : (getWidth() - diameter) / 2;
     int top = alignBottomEnd ? getHeight() - diameter : (getHeight() - diameter) / 2;
     return new Rect(left, top, left + diameter, top + diameter);

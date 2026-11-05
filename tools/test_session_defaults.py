@@ -11,7 +11,7 @@ JAR=Path(testdeps.require(testdeps.org_json_jar(),'org.json'))
 
 def main():
     source=(SRC/'ConversationPreferences.java').read_text()
-    methods='\n'.join(method(source,s) for s in ['  void rememberLastSessionChoices()', '  void restoreLastSessionChoices()'])
+    methods='\n'.join(method(source,s) for s in ['  void rememberLastSessionChoices()','  void rememberLastSessionChoices(Profile slot)','  void restoreLastSessionChoices()'])
     with tempfile.TemporaryDirectory(dir=ROOT/'tools',prefix='session-defaults-test-', ignore_cleanup_errors=True) as folder:
         folder=Path(folder);context=folder/'android/content/Context.java';context.parent.mkdir(parents=True)
         context.write_text('package android.content;public class Context {public static final int MODE_PRIVATE=0;}')
@@ -41,6 +41,8 @@ public class SessionChoicesTest {
  check(restarted.model.equals(a.model) && restarted.permissionMode==PermissionMode.DEFAULT,"new app/store instance restores saved options");
  a.profile=new Profile("host-B","codex");a.model="b-model";a.permissionMode=PermissionMode.READ_ONLY;choices.rememberLastSessionChoices();
  a.profile=new Profile("host-A","codex");choices.restoreLastSessionChoices();check(a.model.equals("gpt-6.1-sol") && a.permissionMode==PermissionMode.DEFAULT,"separate connection choices never overwrite each other");
+ a.model="lanpt/custom-x";choices.rememberLastSessionChoices(new Profile("host-A","opencode"));
+ choices.restoreLastSessionChoices();check(a.model.equals("gpt-6.1-sol"),"explicit-slot remember files under the target channel, never polluting the current one");
  App other=new App(disk);other.profile=new Profile("host-A","claude");new Choices(other).restoreLastSessionChoices();
  check(other.model.isEmpty() && other.permissionMode==PermissionMode.INHERIT,"different runtime does not inherit unrelated model or elevated permission");
  a.model="";a.reasoningEffort="";a.permissionMode=PermissionMode.INHERIT;choices.rememberLastSessionChoices();a.model="old";a.permissionMode=PermissionMode.FULL;choices.restoreLastSessionChoices();

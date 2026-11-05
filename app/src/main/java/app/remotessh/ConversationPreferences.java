@@ -27,9 +27,24 @@ final class ConversationPreferences {
 
   void rememberLastSessionChoices() {
     if(app.profile==null)return;
-    String key=SessionDefaults.key(app.profile.id,app.profile.runtime);
+    rememberLastSessionChoices(app.profile);
+  }
+
+  /** Remember under a specific profile's slot — the channel switch writes its
+   *  choice BEFORE connect() swaps app.profile, so the no-arg form would file
+   *  the custom model under the primary (codex) runtime key. */
+  void rememberLastSessionChoices(Profile slot) {
+    if(slot==null)return;
+    String key=SessionDefaults.key(slot.id,slot.runtime);
     SessionDefaults choices=new SessionDefaults(app.model,app.reasoningEffort,app.permissionMode);
     app.getSharedPreferences("last-session-choices",Context.MODE_PRIVATE).edit().putString(key,choices.encode()).apply();
+  }
+
+  String lastSessionModel() {
+    if (app.profile == null) return "";
+    String key = SessionDefaults.key(app.profile.id, app.profile.runtime);
+    SessionDefaults choices = SessionDefaults.decode(app.getSharedPreferences("last-session-choices", Context.MODE_PRIVATE).getString(key, null));
+    return choices == null ? "" : choices.model;
   }
 
   void restoreLastSessionChoices() {

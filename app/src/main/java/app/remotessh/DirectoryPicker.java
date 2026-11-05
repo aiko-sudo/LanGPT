@@ -239,6 +239,24 @@ final class DirectoryPicker {
 
   private void newProject() {
     if (directory == null) return;
+    // House rule: projects may only be created under ~/uclaw/project. If the
+    // user browsed elsewhere, jump to the root instead of refusing.
+    app.resolveProjectRoot(
+        root -> {
+          if (root.isEmpty()) {
+            Toast.makeText(ui.activity, UiText.get(R.string.work_text_155), Toast.LENGTH_SHORT).show();
+            return;
+          }
+          if (!directory.path.equals(root) && !directory.path.startsWith(root + "/")) {
+            load(root);
+            Toast.makeText(ui.activity, UiText.get(R.string.work_text_230), Toast.LENGTH_SHORT).show();
+            return;
+          }
+          showCreatePrompt();
+        });
+  }
+
+  private void showCreatePrompt() {
     EditText name = new EditText(ui.activity);
     name.setSingleLine(true);
     name.setHint(UiText.get(R.string.work_text_169));

@@ -134,7 +134,7 @@ final class CustomApiConfig {
 
   /**
    * Merge the custom provider into an existing opencode.json document.
-   * Preserves unrelated keys; never throws (bad existing JSON is replaced).
+   * Preserves unrelated keys; rejects malformed existing JSON without replacing it.
    */
   /** Legacy 3-arg form: no provider key (only auth.json). Prefer the 4-arg form. */
   static String mergeProviderConfig(String existingJson, String baseUrl, String model) {
@@ -148,8 +148,14 @@ final class CustomApiConfig {
       options.put("baseURL", normalizeBaseUrl(baseUrl));
       // Verified: @ai-sdk/openai-compatible does NOT pick the key up from
       // auth.json for a custom provider (every request then fails with 401
-      // "Authorization Not Found"); the key must live in options.apiKey.
-      options.put("apiKey", apiKey);
+      // "Authorization Not Found"); the key must be in options.apiKey.
+      // A {file:}/{env:} reference is NOT viable on opencode 1.19.4: the
+      // reference string is sent VERBATIM to the provider (HTTP 401 "api key
+      // ...key} is invalid"), and the config is re-serialized with "/" escaped
+      // so slashed {file:} paths stop resolving and serve exits at boot.
+      // Plaintext here + the scoped workspace AGENTS.md (which forbids the
+      // model from reading PC configs) is the proven-working arrangement.
+      options.put("apiKey", apiKey == null ? "" : apiKey.trim());
       JSONObject entry = new JSONObject();
       entry.put("npm", "@ai-sdk/openai-compatible");
       entry.put("name", "LanGPT Custom API");
@@ -172,15 +178,16 @@ final class CustomApiConfig {
   }
 
   /**
-   * Merge the API key into an existing opencode auth.json document.
-   * Preserves credentials for other providers.
+   * Store the raw LanGPT key in auth.json. Preserves credentials for other
+   * providers. (No {file:}/{env:} indirection: opencode 1.19.4 sends the
+   * reference string verbatim to the provider, so the key must be literal.)
    */
   static String mergeAuthConfig(String existingJson, String apiKey) {
     JSONObject root = parseOrEmpty(existingJson);
     try {
       JSONObject entry = new JSONObject();
       entry.put("type", "api");
-      entry.put("key", apiKey);
+      entry.put("key", apiKey == null ? "" : apiKey.trim());
       root.put(PROVIDER_ID, entry);
     } catch (Exception ignored) {
     }
@@ -192,7 +199,7 @@ final class CustomApiConfig {
     try {
       return new JSONObject(json);
     } catch (Exception e) {
-      return new JSONObject();
+      throw new IllegalArgumentException("现有 OpenCode 配置不是有效 JSON，未修改远端文件", e);
     }
   }
 }

@@ -225,4 +225,5 @@
     <string name="work_text_223">"AGENTS.md missing · Tap to create"</string>
     <string name="work_text_224">"AGENTS.md template created"</string>
     <string name="work_text_225">"Operation failed: "</string>
+        <string name="work_text_230">"Projects can only be created under the project root (~/uclaw/project); switched there for you"</string>
 </resources>

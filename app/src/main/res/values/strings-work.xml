@@ -225,4 +225,5 @@
     <string name="work_text_223">"AGENTS.md 未配置 · 点击生成"</string>
     <string name="work_text_224">"已生成 AGENTS.md 模板"</string>
     <string name="work_text_225">"操作失败："</string>
+        <string name="work_text_230">"项目仅可建在项目根目录（~/uclaw/project）下，已为你切换"</string>
 </resources>

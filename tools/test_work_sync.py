@@ -46,10 +46,12 @@ class App {
  ArrayDeque<String> restoreQueue=new ArrayDeque<>();Map<String,String> conversationLoads=new HashMap<>();Set<String> recoveringThreads=new HashSet<>();
  Map<String,Progress> taskProgress=new HashMap<>();Inbox taskInbox=new Inbox();Turns turns=new Turns();
  JSONArray threads=new JSONArray(),workThreads=new JSONArray();Store conversationStore=new Store();
+ ProjectHistoryFilter historyDirectories=new ProjectHistoryFilter(); void verifyHistoryDirectories(JSONArray rows){}
  List<Consumer<JSONObject>> successes=new ArrayList<>();List<Consumer<Throwable>> failures=new ArrayList<>();JSONObject requestParams;
  Preferences getSharedPreferences(String name,int mode){return prefs;}
  void connect(Profile p){connects++;profile=p;}void checkpoint(){}void changed(){changes++;}void save(){}
  void landHome(){threadId="";busy=false;remoteRunning=false;}
+ void saveDeletedThreads(){}
  boolean threadRunning(JSONObject thread){return Json.object(thread,"status").optString("type").equals("active");}
  Progress taskProgress(String id){return new Progress();}
  String restoredTitle(JSONObject json,String id,String title){return json.optString("name",title);}
@@ -89,13 +91,16 @@ public class WorkSyncTest {
  ghost.failures.get(0).accept(new RpcException(-32600,"no rollout found for thread id G"));
  check(gdone[0]==1 && ghost.conversationStore.get("G")==null && ghost.deletedThreadIds.contains("G"),"not-loaded delete purges local residue and reports success");
  check(ghost.threads.length()==0 && !ghost.prefs.sets.get("p").contains("G") && ghost.prefs.sets.get("p").contains("K"),"purge drops thread listing and restore-set id only");
- check(App.isRemoteMissingThread(new RpcException(-32600,"thread not loaded: X")) && App.isRemoteMissingThread(new RpcException(-32600,"no rollout found for thread id Y")) && !App.isRemoteMissingThread(new RpcException(-32600,"already has an active writer")),"remote-missing classifier covers not-loaded and no-rollout only");
+ check(App.isRemoteMissingThread(new RpcException(-32600,"thread not loaded: X")) && App.isRemoteMissingThread(new RpcException(-32600,"no rollout found for thread id Y")) && App.isRemoteMissingThread(new RpcException(-32600,"Invalid thread id: invalid character: expected an optional prefix of `urn:uuid:`")) && !App.isRemoteMissingThread(new RpcException(-32600,"already has an active writer")),"remote-missing classifier covers not-loaded, no-rollout and foreign invalid-id (delete path purges locally; tombstone sync follows on the custom channel)");
  App r=new App();r.profile=new Profile("p");r.connected=true;r.threadId="B";r.threads.put(listed("project-history","idle"));
  int[] refreshed={0};r.refreshWorkPanel(error->{refreshed[0]++;});
  check(!r.requestParams.has("cwd"),"work refresh is global read-only list, independent of project-browser filter");
  r.successes.get(0).accept(Json.obj("data",new JSONArray().put(listed("new-active","active"))));
  check(refreshed[0]==1 && r.threads.getJSONObject(0).optString("id").equals("project-history") && r.threadId.equals("B"),"successful work refresh finishes without changing project history or navigation");
  check(r.workConversations().stream().anyMatch(t->t.threadId.equals("new-active")),"new remote active task appears after refresh");
+ ConversationState missing=task("missing-task",false);missing.cwd="/missing";r.conversationStore.values.put(missing.threadId,missing);
+ Map<String,Integer> ticket=r.historyDirectories.begin(Arrays.asList("/missing"));r.historyDirectories.finish(ticket,Collections.singletonMap("/missing",false));
+ check(r.workConversations().stream().noneMatch(t->t.threadId.equals("missing-task")) && r.conversationStore.get("missing-task")!=null,"missing project hides history without deleting it");
  r.refreshWorkPanel(error->{refreshed[0]++;});r.failures.get(1).accept(new Exception("fixture"));check(refreshed[0]==2,"refresh failure also invokes completion");
  r.refreshWorkPanel(error->{});r.refreshWorkPanel(error->{});
  r.successes.get(3).accept(Json.obj("data",new JSONArray().put(listed("fresh","active"))));
@@ -103,7 +108,7 @@ public class WorkSyncTest {
  check(r.workThreads.getJSONObject(0).optString("id").equals("fresh"),"late old refresh cannot overwrite newer snapshot");
  }
 }''')
-        subprocess.run(['javac','-cp',str(JAR),'-d',str(directory),str(SRC/'Json.java'),str(test)],check=True)
+        subprocess.run(['javac','-cp',str(JAR),'-d',str(directory),str(SRC/'Json.java'),str(SRC/'ProjectHistoryFilter.java'),str(test)],check=True)
         subprocess.run(['java','-cp',str(directory)+':'+str(JAR),'app.remotessh.WorkSyncTest'],check=True)
     panel=(SRC/'WorkPanel.java').read_text();activity=(SRC/'MainActivity.java').read_text()
     assert 'new PullRefreshScrollView' in panel and 'app.refreshWorkPanel(' in panel and 'scrollRef[0].finishRefresh()' in panel
@@ -114,6 +119,101 @@ public class WorkSyncTest {
     for name in ['WorkPanel.java','SftpBrowser.java','RemoteBrowser.java']:
         content=(SRC/name).read_text();assert 'setIncludeFontPadding(false)' in content and 'Gravity.CENTER_VERTICAL' in content
     browser=(SRC/'RemoteBrowser.java').read_text();assert 'CenteredMenu.show(activity,ui.fg,menuLabels()' in browser
+    # Workspace project scan must RE-scan (throttled), not cache once per
+    # connection — folders created mid-session must appear without reconnect.
+    assert 'workspaceScanAt' in browser and 'now - at < 3000' in browser
+    activity=(SRC/'MainActivity.java').read_text()
+    # Drafts survive model/channel switches on the SAME profile id: the input
+    # must be persisted to connectionDrafts BEFORE the unconditional clear.
+    assert 'connectionDrafts.put(app.profile.id, input.getText().toString())' in activity
+    # Copy buttons render at half size (48dp -> 24dp hit box, 32->16dp glyph slot).
+    assert 'heading.addView(copyButton,new LinearLayout.LayoutParams(dp(24),dp(24)))' in activity
+    assert 'bubbleRow.addView(copyButton,new LinearLayout.LayoutParams(dp(24),dp(24)))' in activity
+    assert 'copyButton,new LinearLayout.LayoutParams(dp(48),dp(48))' not in activity
+    icon=(SRC/'IconView.java').read_text()
+    assert 'Math.round(16 * getResources().getDisplayMetrics().density)' in icon
+    # House rule: projects are created only under ~/uclaw/project — the picker
+    # starts at the resolved root and creation elsewhere jumps back to it.
+    # The root is per-connection configurable (Profile.projectRoot); the
+    # $HOME/uclaw/project path is only the fallback convention.
+    appsrc=(SRC/'RemoteApp.java').read_text()
+    assert 'void resolveProjectRoot(' in appsrc and '$HOME/uclaw/project' in appsrc
+    assert 'profile.projectRoot.trim()' in appsrc
+    prof=(SRC/'Profile.java').read_text()
+    assert 'public String projectRoot = "";' in prof and '"projectRoot",' in prof
+    editor=(SRC/'ProfileEditor.java').read_text()
+    assert 'main_text_218' in editor
+    dp=(SRC/'DirectoryPicker.java').read_text()
+    assert 'showCreatePrompt' in dp and 'work_text_230' in dp
+    masrc=(SRC/'MainActivity.java').read_text()
+    assert 'app.resolveProjectRoot(' in masrc
+    # Restored history: user turns from the opencode bridge carry top-level
+    # text only — ChatItem must not blank them when content[] is absent.
+    ci=(SRC/'ChatItem.java').read_text()
+    assert 'if (b.length() > 0) m.text = b.toString();' in ci
+    # Send button is disabled while a model switch is in flight (and the
+    # handler keeps the draft instead of firing a doomed prompt).
+    assert '!app.replaying && !app.readOnly && !app.customSwitching' in masrc
+    assert 'if (app.customSwitching) {' in masrc
+    # Cross-channel visibility: recent lists merge the other channel's locally
+    # cached conversations and open them from cache with a continuation prefix.
+    cs=(SRC/'ConversationState.java').read_text()
+    assert 'String runtime = "";' in cs and 'long lastUsedAt;' in cs
+    appsrc2=(SRC/'RemoteApp.java').read_text()
+    assert 'public JSONArray visibleThreads()' in appsrc2
+    assert 'private void openCrossChannelConversation(ConversationState s)' in appsrc2
+    assert 'pendingContextPrefix = buildContextPrefix(items);' in appsrc2
+    br2=(SRC/'RemoteBrowser.java').read_text()
+    assert 'app.visibleThreads().length()' in br2
+    assert 'thread.optString("runtime", app.profile.runtime)' in br2
+    # V2.0.28: pre-V2.0.27 caches have empty runtime — resolve the channel from
+    # the id itself (ses_* = opencode, uuid = codex) in lists, open path and as
+    # a thread/read failure fallback instead of surfacing -32600.
+    assert 'static String inferredChannel(String id)' in appsrc2
+    assert 'cached.runtime = channel;' in appsrc2
+    assert '!inferredChannel(id).equals(profile.runtime)' in appsrc2
+    # V2.0.29 (SCRIPT 32): the opencode bridge must nest turns inside the
+    # thread object (codex shape) — ThreadSnapshot/applyThread read
+    # thread.turns; a top-level turns key left every custom-channel history
+    # blank behind the read-only banner.
+    bridge=(ROOT/'app/src/main/assets/remote_session.py').read_text()
+    assert "SCRIPT_VERSION = 38" in bridge
+    assert "'turns': turns}}" in bridge
+    # V2.0.30 (SCRIPT 33): cross-channel recent now comes from the remote
+    # source of truth (bridge listOther/readOther over codex rollout files
+    # and the opencode store) — phone-local caches only ever held the one
+    # conversation open at switch time, so lists were blind after restart.
+    assert 'def codex_other_sessions(' in bridge and 'def codex_other_turns(' in bridge
+    assert 'def opencode_other_sessions(' in bridge and 'def opencode_other_turns(' in bridge
+    assert "thread/listOther" in bridge and "thread/readOther" in bridge
+    assert 'void refreshOtherChannelThreads()' in appsrc2
+    assert 'private void readOtherThread(String id, String channel)' in appsrc2
+    assert 'request("thread/readOther", Json.obj("threadId", id)' in appsrc2
+    assert 'app.refreshOtherChannelThreads();' in br2
+    # fd32b7f2 / V2.0.31: real bidirectional dispatch — codex Host serves the
+    # opencode store, OpenCodeHost serves codex rollouts; listOther failures
+    # become retryable, stale lists are cleared on reconnect, and cached rows
+    # dedupe against remote rows (scan `out`, not just current-channel rows).
+    host_seg = bridge[bridge.index('class Host:'):bridge.index('class OpenCodeHost:')]
+    oc_seg = bridge[bridge.index('class OpenCodeHost:'):]
+    assert "method == 'thread/listOther'" in host_seg and 'opencode_other_sessions()' in host_seg
+    assert "method == 'thread/readOther'" in host_seg and 'opencode_other_turns(' in host_seg
+    assert "method == 'thread/listOther'" in oc_seg and 'codex_other_sessions()' in oc_seg
+    assert "method == 'thread/readOther'" in oc_seg and 'codex_other_turns(' in oc_seg
+    assert 'otherChannelGeneration = -1;' in appsrc2   # retry after failure + reset on reconnect
+    assert 'otherChannelThreads = new JSONArray();' in appsrc2
+    assert 'for (int n = 0; n < out.length(); n++) {' in appsrc2
+    # V2.0.32 (SCRIPT 35): cross-channel deletes + read-only running state.
+    # Codex Host gained a real thread/delete (rollout unlink + shared
+    # tombstone); _latest_tombstones unions ALL tombstone files; read-only
+    # opens never report remoteRunning (stop button hung on idle remotes).
+    assert "SCRIPT_VERSION = 38" in bridge
+    assert 'def remember_tombstone(tid):' in bridge
+    assert "if sid in tomb or not rollout or not Path(rollout).is_file():" in bridge
+    host_seg2 = bridge[bridge.index('class Host:'):bridge.index('class OpenCodeHost:')]
+    assert "method == 'thread/delete'" in host_seg2 and 'remember_tombstone(tid)' in host_seg2
+    assert 'remoteRunning = !readonly && Json.object(thread, "status")' in appsrc2
+    assert 'if (deletedThreadIds.contains(oid)) continue;' in appsrc2
     assert 'int[] selectedFilter = {0};' in panel and 'tabSwipe' in panel
     assert 'taskRow.setOnClickListener' not in panel and 'counts.setOnClickListener' in panel
     assert 'toggle.setGravity(Gravity.RIGHT' in panel

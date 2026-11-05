@@ -153,10 +153,14 @@ final class RemoteBrowser {
   void show() {
     ui.show(dialog);
     renderedSignature = "";
+    directoryStatus.clear(); directoryScanAt = 0; directoryScanSequence++; directoryScanning = false;
     if (!app.historyProject.isEmpty()) {
       app.historyProject = "";
       if (app.connected) app.refreshThreads(false);
     }
+    // Cross-channel recent: pull the other channel's session list once per
+    // connection so the project page never dead-ends after a channel switch.
+    app.refreshOtherChannelThreads();
     filter = app.profile == null ? (app.vault.profiles.isEmpty() ? "" : app.vault.profiles.get(0).id) : app.profile.id;
     refresh();
   }
@@ -221,6 +225,73 @@ final class RemoteBrowser {
     }
     refreshList();
     scanAgentsMd();
+    scanWorkspaceProjects();
+    scanProjectDirectories();
+  }
+
+  private final Map<String, Boolean> directoryStatus = new HashMap<>();
+  private long directoryScanAt;
+  private int directoryScanSequence;
+  private boolean directoryScanning;
+  private String directoryScanKey = "";
+  private String directoryStatusOwner = "";
+
+  private void scanProjectDirectories() {
+    if (!isShowing() || !app.connected || app.profile == null || directoryScanning) return;
+    Profile current = app.profile;
+    LinkedHashSet<String> paths = new LinkedHashSet<>(current.projects);
+    for (Profile saved : app.vault.profiles) if (saved.id.equals(current.id)) {
+      paths.addAll(saved.projects);
+      if (!saved.cwd.isEmpty()) paths.add(saved.cwd);
+    }
+    if (!current.cwd.isEmpty()) paths.add(current.cwd);
+    JSONArray histories = app.visibleThreads();
+    for (int i = 0; i < histories.length(); i++) {
+      JSONObject history = histories.optJSONObject(i);
+      if (history != null && history.optString("cwd").startsWith("/")) paths.add(history.optString("cwd"));
+    }
+    List<String> workspace = workspaceProjects.get(current.id);
+    if (workspace != null) paths.addAll(workspace);
+    String key = current.id + ":" + app.connectionGeneration() + ":" + paths.toString();
+    long now = android.os.SystemClock.elapsedRealtime();
+    if (key.equals(directoryScanKey) && now - directoryScanAt < 3000) return;
+    String owner = current.id + ":" + app.connectionGeneration();
+    if (!owner.equals(directoryStatusOwner)) { directoryStatus.clear(); directoryStatusOwner = owner; }
+    directoryScanKey = key; directoryScanAt = now; directoryScanning = true;
+    int sequence = ++directoryScanSequence;
+    app.checkProjectDirectories(paths, result -> {
+      if (sequence != directoryScanSequence) return;
+      directoryScanning = false;
+      if (!isShowing() || app.profile != current) return;
+      directoryStatus.clear();
+      if (result != null) directoryStatus.putAll(result);
+      refresh();
+    });
+  }
+
+  // Custom-channel projects are sub-directories of ~/lanpt-workspace that the
+  // thread cwd aggregation never sees; rescanned with a short throttle so a
+  // folder created mid-session shows up without reconnecting.
+  private final java.util.Map<String, java.util.List<String>> workspaceProjects = new java.util.HashMap<>();
+  private final java.util.Map<String, Long> workspaceScanAt = new java.util.HashMap<>();
+  private boolean workspaceScanning;
+
+  private void scanWorkspaceProjects() {
+    if (!isShowing() || !app.connected || workspaceScanning) return;
+    if (app.profile == null || !"opencode".equals(app.profile.runtime)) return;
+    final String pid = app.profile.id;
+    Long at = workspaceScanAt.get(pid);
+    long now = android.os.SystemClock.elapsedRealtime();
+    if (at != null && now - at < 3000) return;
+    workspaceScanAt.put(pid, now);
+    workspaceScanning = true;
+    app.listWorkspaceProjects(dirs -> {
+      workspaceScanning = false;
+      if (dirs == null || pid.equals(app.profile == null ? "" : app.profile.id)) {
+        workspaceProjects.put(pid, dirs == null ? new java.util.ArrayList<>() : dirs);
+        refresh();
+      }
+    });
   }
 
   /** 后台检测当前 profile 各项目根的 AGENTS.md；结果变化经 signature 触发重绘。 */
@@ -259,14 +330,18 @@ final class RemoteBrowser {
         .append(app.remoteVersion.label()).append('|').append(app.nextCursor).append('|').append(app.canSwitchConversation());
     for (Profile p : app.vault.profiles)
       value.append("|p:").append(p.id).append(':').append(p.name).append(':').append(p.cwd)
-          .append(':').append(p.projects.hashCode());
-    for (int i = 0; i < app.threads.length(); i++) {
-      JSONObject thread = app.threads.optJSONObject(i);
-      if (thread != null) value.append("|t:").append(thread.optString("id"))
+          .append(':').append(p.projects.hashCode())
+          .append(':').append(java.util.Objects.hashCode(workspaceProjects.get(p.id)));
+    JSONArray visible = app.visibleThreads();
+    for (int i = 0; i < visible.length(); i++) {
+      JSONObject thread = visible.optJSONObject(i);
+      value.append("|t:").append(thread.optString("id"))
           .append(':').append(thread.optString("name")).append(':').append(thread.optString("preview"))
           .append(':').append(thread.optString("cwd")).append(':').append(thread.optLong("updatedAt"))
+          .append(':').append(thread.optString("runtime"))
           .append(':').append(app.threadRunning(thread));
     }
+    value.append("|dirs:").append(directoryStatus);
     value.append("|md:").append(agentsMd);
     return value.toString();
   }
@@ -306,8 +381,10 @@ final class RemoteBrowser {
         if (!filter.equals(p.id)) continue;
         LinkedHashSet<String> paths = new LinkedHashSet<>(p.projects);
         if (!p.cwd.isEmpty()) paths.add(p.cwd);
+        java.util.List<String> workspace = workspaceProjects.get(p.id);
+        if (workspace != null) paths.addAll(workspace);
         for (String path : paths) {
-          if (!matches(path)) continue;
+          if (ProjectVisibility.isHidden(app, p.id, path) || (p.id + ":" + app.connectionGeneration()).equals(directoryStatusOwner) && Boolean.FALSE.equals(directoryStatus.get(path)) || !matches(path)) continue;
           count++;
           LinearLayout row = ui.row();
           row.setPadding(0, ui.dp(4), 0, ui.dp(4));
@@ -332,7 +409,7 @@ final class RemoteBrowser {
           // 左滑露出「移除」: 仅本地隐藏, 不删远端文件, cwd 不可移
           SwipeActionLayout swipe = new SwipeActionLayout(
               ui.activity, row, ui.dp(72), UiText.get(R.string.work_text_122), ui.bg, () -> {
-                if (p.cwd.equals(path) || !p.projects.contains(path)) {
+                if (p.cwd.equals(path)) {
                   Toast.makeText(ui.activity, UiText.get(R.string.work_text_123), Toast.LENGTH_SHORT).show();
                   return;
                 }
@@ -341,6 +418,7 @@ final class RemoteBrowser {
                     .setMessage(UiText.get(R.string.work_text_125))
                     .setNegativeButton(UiText.get(R.string.work_text_004), null)
                     .setPositiveButton(UiText.get(R.string.work_text_122), (d, w) -> {
+                      ProjectVisibility.setHidden(app, p.id, path, true);
                       p.projects.remove(path);
                       try { app.vault.save(); } catch (Exception e) { /* 本地存储失败不阻塞 UI */ }
                       Toast.makeText(ui.activity, UiText.get(R.string.work_text_126), Toast.LENGTH_SHORT).show();
@@ -382,8 +460,8 @@ final class RemoteBrowser {
     }
     int count = 0;
     if (app.connected && filter.equals(app.profile.id))
-      for (int i = 0; i < app.threads.length(); i++) {
-        JSONObject thread = app.threads.optJSONObject(i);
+      for (int i = 0; i < app.visibleThreads().length(); i++) {
+        JSONObject thread = app.visibleThreads().optJSONObject(i);
         if (thread == null) continue;
         if (!project.isEmpty() && !thread.optString("cwd").equals(project)) continue;
         String name = thread.isNull("name") ? "" : thread.optString("name");
@@ -391,7 +469,7 @@ final class RemoteBrowser {
         if (!matches(name)) continue;
         count++;
         LinearLayout row = ui.row();
-        TextView text = ui.text("[" + app.profile.runtime + "] " + (name.isEmpty() ? UiText.get(R.string.work_text_131) : name), 15);
+        TextView text = ui.text("[" + thread.optString("runtime", app.profile.runtime) + "] " + (name.isEmpty() ? UiText.get(R.string.work_text_131) : name), 15);
         text.setMaxLines(1);
         text.setEllipsize(TextUtils.TruncateAt.END);
         text.setPadding(0, ui.dp(12), ui.dp(12), ui.dp(12));

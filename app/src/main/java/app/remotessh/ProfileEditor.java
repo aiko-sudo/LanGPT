@@ -161,6 +161,7 @@ final class ProfileEditor {
         () ->
             extra.setVisibility(extra.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE));
     EditText cwd = ui.field(extra, UiText.get(R.string.main_text_50), draft.cwd, UiText.get(R.string.main_extra_2), false),
+        projectRoot = ui.field(extra, UiText.get(R.string.main_text_218), draft.projectRoot, "$HOME/uclaw/project", false),
         command = ui.field(extra, UiText.get(R.string.main_text_51), draft.command, "codex app-server", false);
     CheckBox persistent = new CheckBox(activity);
     AppIcons.selection(persistent,ui.fg,ui.muted,false);
@@ -202,6 +203,8 @@ final class ProfileEditor {
             draft.privateKey = useKey ? key.getText().toString() : "";
             draft.passphrase = useKey ? passphrase.getText().toString() : "";
             draft.cwd = cwd.getText().toString().trim();
+            draft.projectRoot = projectRoot.getText().toString().trim();
+            if (!draft.projectRoot.startsWith("/")) draft.projectRoot = "";
             draft.command = command.getText().toString().trim();
             String preset = runtimeCommand.get(draft.runtime);
             if (preset != null && command.getText().toString().trim().isEmpty())

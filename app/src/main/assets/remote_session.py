@@ -6,6 +6,7 @@ remaps request IDs, and replays a thread's baseline and ordered event journal.
 Only the daemon lifetime is durable; machine/daemon failure still ends the task.
 """
 import base64
+import concurrent.futures
 import fcntl
 import hashlib
 import json
@@ -23,7 +24,28 @@ import time
 from pathlib import Path
 
 LIMIT = 32 * 1024 * 1024
-SCRIPT_VERSION = 17  # bump when host bridge behavior changes; idle daemons auto-upgrade
+SCRIPT_VERSION = 38  # bump when host bridge behavior changes; idle daemons auto-upgrade
+
+# Created in the working directory on first thread/start: keeps the model from
+# reading PC secrets to answer "what am I bound to" style questions. Without a
+# scoped workspace the model answered from ~/.config/opencode and echoed a key.
+WORKSPACE_AGENTS_MD = """# Working Directory Rules (LanGPT workspace)
+
+This folder is your ONLY working directory. Treat everything outside it as out of scope.
+
+1. NEVER read, open, print, or quote any of these files (they hold API keys / credentials):
+   `~/.config/opencode/opencode.json`, `~/.config/opencode/.lanpt-key`,
+   `~/.local/share/opencode/auth.json`, `~/.remote-gpt/**`, and any `*key*`/`*token*`/`*secret*` file.
+2. To answer "which model am I" / "what am I bound to": state only the public
+   identity you were given in this conversation, plus your working directory.
+   That is ALL a user can verify. Do NOT open config files to prove it.
+3. Do not read or echo environment variables that look like keys, and do not
+   read `~/.hermes`, `~/.codex`, `~/.claude` or any other agent's private data.
+4. If a user asks about API keys: say the key is stored out of your reach on
+   purpose, and suggest rotating it from the LanGPT app. Never attempt to print it.
+5. If asked "are you Claude/GPT/GLM/DeepSeek": answer honestly per your real
+   identity — do not claim a label from chat history unless you are that model.
+"""
 
 
 def encode(value):
@@ -349,6 +371,216 @@ class TuiWatcher:
                 pass
 
 
+def codex_active_rows():
+    """Read the current Codex index, not orphaned or archived rollout files."""
+    root = Path.home() / '.codex'
+    candidates = sorted(root.glob('state_*.sqlite'),
+                        key=lambda p: int(p.stem.split('_')[-1]) if p.stem.split('_')[-1].isdigit() else -1,
+                        reverse=True)
+    if not candidates:
+        raise FileNotFoundError('Codex history index unavailable')
+    db = sqlite3.connect(candidates[0].as_uri() + '?mode=ro', uri=True)
+    try:
+        # has_user_event is 0 on every local row (newer Codex builds); only
+        # archived is a reliable filter. updated_at_ms aligns units with the
+        # phone (ms), updated_at is seconds — detect the column because older
+        # index files lack it.
+        cols = {r[1] for r in db.execute('PRAGMA table_info(threads)').fetchall()}
+        updated = ('COALESCE(updated_at_ms, updated_at * 1000, 0)'
+                   if 'updated_at_ms' in cols else 'COALESCE(updated_at * 1000, 0)')
+        return db.execute('SELECT id, title, cwd, %s, rollout_path FROM threads '
+                          'WHERE archived = 0 ORDER BY 4 DESC' % updated).fetchall()
+    finally:
+        db.close()
+
+
+def codex_other_sessions(limit=30):
+    tomb = _latest_tombstones()
+    rows = []
+    for sid, title, cwd, updated, rollout in codex_active_rows():
+        if sid in tomb or not rollout or not Path(rollout).is_file():
+            continue
+        rows.append({'id': sid, 'name': title or sid, 'cwd': cwd or '',
+                     'updatedAt': int(updated or 0)})
+        if len(rows) >= limit:
+            break
+    return rows
+
+
+def codex_other_turns(thread_id, max_lines=4000):
+    """Rebuild phone-protocol turns from a codex rollout file (read-only)."""
+    if not thread_id or thread_id in _latest_tombstones():
+        raise FileNotFoundError('Codex conversation not found')
+    matches = [Path(row[4]) for row in codex_active_rows() if row[0] == thread_id and row[4]]
+    if not matches or not matches[0].is_file():
+        raise FileNotFoundError('Codex conversation not found')
+    turns = []
+    with matches[0].open(encoding='utf-8', errors='replace') as fh:
+        for index, line in enumerate(fh):
+            if index >= max_lines:
+                break
+            try:
+                rec = json.loads(line)
+            except Exception:
+                continue
+            payload = rec.get('payload') or {}
+            if payload.get('type') != 'message':
+                continue
+            role = payload.get('role')
+            mid = payload.get('id', '')
+            text = ' '.join(str(c.get('text', '')) for c in (payload.get('content') or [])
+                            if isinstance(c, dict)).strip()
+            if not text:
+                continue
+            if role == 'user':
+                if text.startswith('#'):   # AGENTS.md / environment injection
+                    continue
+                turns.append({'id': mid, 'status': 'completed',
+                              'items': [{'id': mid + '-u', 'type': 'userMessage', 'text': text}]})
+            elif role == 'assistant':
+                turns.append({'id': mid, 'status': 'completed',
+                              'items': [{'id': mid + '-a', 'type': 'agentMessage', 'text': text,
+                                         'timestamp': rec.get('timestamp')}]})
+    return turns
+
+
+def opencode_db_rows(query, args=()):
+    """Read-only helper against the opencode store (works while serve is down)."""
+    path = Path.home() / '.local' / 'share' / 'opencode' / 'opencode.db'
+    if not path.exists():
+        return []
+    db = sqlite3.connect('file:%s?mode=ro' % path, uri=True)
+    try:
+        return db.execute(query, args).fetchall()
+    finally:
+        db.close()
+
+
+SHARED_TOMBSTONES = Path.home() / '.remote-gpt' / 'deleted.json'
+
+
+def remember_tombstone(tid):
+    """Record a deletion where BOTH bridges' cross-channel listings see it.
+
+    Per-daemon tombstones.json only filters the bridge that wrote it; a phone
+    deleting a codex row while on the opencode channel (or vice versa) needs
+    the marker in the shared file or the row resurrects on next listOther.
+    """
+    SHARED_TOMBSTONES.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = SHARED_TOMBSTONES.with_suffix('.lock')
+    with lock_path.open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        data = set()
+        if SHARED_TOMBSTONES.exists():
+            data = set(json.loads(SHARED_TOMBSTONES.read_text()))
+        data.add(tid)
+        with tempfile.NamedTemporaryFile(mode='w', dir=SHARED_TOMBSTONES.parent,
+                                         prefix='.deleted-', delete=False) as out:
+            temp = Path(out.name)
+            try:
+                json.dump(sorted(data), out)
+                out.flush()
+                os.fsync(out.fileno())
+                os.replace(temp, SHARED_TOMBSTONES)
+            finally:
+                temp.unlink(missing_ok=True)
+
+
+
+def _latest_tombstones():
+    """Union of the shared cross-bridge file and every daemon tombstone set.
+
+    Reading only the newest daemon file lost deletions made through the other
+    bridge; deletions must survive channel switches, so union them all.
+    """
+    ids = set()
+    try:
+        if SHARED_TOMBSTONES.exists():
+            ids |= set(json.loads(SHARED_TOMBSTONES.read_text()))
+    except Exception:
+        pass
+    for path in Path.home().glob('.remote-gpt/*/tombstones.json'):
+        try:
+            ids |= set(json.loads(path.read_text()))
+        except (OSError, ValueError, TypeError):
+            continue
+    return ids
+
+
+def opencode_other_sessions(limit=30):
+    """List the custom (opencode) channel's sessions for the codex bridge.
+
+    The opencode store keeps message headers in session_message (user rows
+    carry text inline) and assistant bodies in the part table; titles come
+    from the first real user prompt.
+    """
+    tomb = _latest_tombstones()
+    rows = opencode_db_rows(
+        'SELECT id, title, directory, time_updated FROM session '
+        'ORDER BY time_updated DESC LIMIT ?', (limit + len(tomb),))
+    out = []
+    for sid, title, directory, updated in rows:
+        if sid in tomb:
+            continue
+        name = (title or '').strip()
+        if not name or name.startswith('New session'):
+            name = ''
+            try:
+                blob = opencode_db_rows(
+                    "SELECT data FROM session_message WHERE session_id=? AND type='user' "
+                    "ORDER BY seq LIMIT 1", (sid,))
+                if blob:
+                    name = (json.loads(blob[0][0]).get('text') or '').strip()[:40]
+            except Exception:
+                pass
+        out.append({'id': sid, 'name': name or sid[:16],
+                    'cwd': directory or '', 'updatedAt': int(updated or 0)})
+        if len(out) >= limit:
+            break
+    return out
+
+
+def opencode_other_turns(thread_id):
+    """Rebuild phone-protocol turns from the opencode store (read-only DB).
+
+    Assistant bodies live in the event log (session.next.text.ended.1 carries
+    assistantMessageID + full text), not in the part table.
+    """
+    assistant_texts = {}
+    for (blob,) in opencode_db_rows(
+            "SELECT data FROM event WHERE aggregate_id=? AND type='session.next.text.ended.1'",
+            (thread_id,)):
+        try:
+            event = json.loads(blob)
+        except Exception:
+            continue
+        if event.get('assistantMessageID'):
+            assistant_texts[event['assistantMessageID']] = event.get('text') or ''
+    turns = []
+    rows = opencode_db_rows(
+        "SELECT id, type, data FROM session_message WHERE session_id=? "
+        "AND type IN ('user','assistant') ORDER BY seq", (thread_id,))
+    for mid, kind, blob in rows:
+        try:
+            info = json.loads(blob)
+        except Exception:
+            continue
+        if kind == 'user':
+            text = (info.get('text') or '').strip()
+            if not text:
+                continue
+            turns.append({'id': mid, 'status': 'completed',
+                          'items': [{'id': mid + '-u', 'type': 'userMessage', 'text': text}]})
+        else:
+            text = assistant_texts.get(mid, '')
+            if not text.strip():
+                continue
+            turns.append({'id': mid, 'status': 'completed',
+                          'items': [{'id': mid + '-a', 'type': 'agentMessage', 'text': text,
+                                     'completedAt': (info.get('time') if isinstance(info.get('time'), dict) else {}).get('completed')}]})
+    return turns
+
+
 class Host:
     def __init__(self, folder, command):
         folder.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -438,6 +670,42 @@ class Host:
                     'scriptVersion': SCRIPT_VERSION,
                     'capabilities': {'runtime': 'codex', 'models': True, 'attachments': True,
                                      'approval': True, 'resume': True, 'interrupt': True}}))
+                return
+            if method == 'thread/delete':
+                # The codex bridge had NO delete handler: deletes failed into
+                # a missing-thread misread (toast said deleted) while rollout
+                # files stayed on disk and listOther resurrected the row.
+                # Delete for real (rollout file) AND record the shared
+                # tombstone so both channels' listings honor it.
+                tid = params.get('threadId', '')
+                if tid:
+                    try:
+                        root = Path.home() / '.codex' / 'sessions'
+                        for path in root.glob('*/*/*/rollout-*.jsonl'):
+                            if tid in path.name:
+                                path.unlink()
+                    except OSError:
+                        pass
+                    self.baselines.pop(tid, None)
+                    try:
+                        remember_tombstone(tid)
+                    except (OSError, ValueError) as exc:
+                        peer.send(dict(id=ident, error=dict(code=-32000, message="保存删除标记失败: %s" % exc)))
+                        return
+                peer.send(dict(id=ident, result={}))
+                return
+            if method == 'thread/listOther':
+                # Cross-channel listing: while this codex bridge serves the
+                # primary channel, surface the custom channel's sessions from
+                # its read-only store so the phone's recent list never
+                # dead-ends after a channel switch.
+                peer.send(dict(id=ident, result={'data': opencode_other_sessions()}))
+                return
+            if method == 'thread/readOther':
+                turns = opencode_other_turns(params.get('threadId', ''))
+                peer.send(dict(id=ident, result={'thread': {'id': params.get('threadId', ''),
+                                                            'status': {'type': 'idle'},
+                                                            'turns': turns}}))
                 return
             thread = params.get('threadId', '')
             if method == 'thread/resume' and thread in self.baselines:
@@ -534,6 +802,9 @@ class Host:
                             peer.send(value)
                         continue
                     params = value.get('params') or {}
+                    item = params.get('item')
+                    if method == 'item/completed' and isinstance(item, dict) and item.get('type') == 'agentMessage':
+                        item.setdefault('completedAt', int(time.time() * 1000))
                     thread = params.get('threadId', '')
                     if ident is not None:
                         self.approvals[str(ident)] = value
@@ -609,12 +880,31 @@ def daemon(folder, command, runtime='codex'):
     listener = socket.socket(socket.AF_UNIX)
     listener.bind(str(path))
     listener.listen(4)
+    # A granted remote/shutdownIfIdle must retire the *protocol daemon*, not
+    # only its app-server child. Otherwise attach() finds this UNIX socket and
+    # routes the next phone handshake to a permanently `shutting_down` Host.
+    # Polling also lets the graceful shutdown condition remain owned by Host.
+    listener.settimeout(.2)
     (folder / 'daemon.pid').write_text(str(os.getpid()))
     host = (CliHost(folder, command, runtime) if runtime in ('dsh', 'claude') else
             OpenCodeHost(folder, command) if runtime == 'opencode' else Host(folder, command))
-    while True:
-        sock, _ = listener.accept()
-        threading.Thread(target=host.attach, args=(sock,), daemon=True).start()
+    try:
+        while not host.shutting_down:
+            try:
+                sock, _ = listener.accept()
+            except socket.timeout:
+                continue
+            threading.Thread(target=host.attach, args=(sock,), daemon=True).start()
+    finally:
+        listener.close()
+        path.unlink(missing_ok=True)
+        # The bridge created the child process group, so reclaim it only after
+        # its own idle-safe shutdown has been granted.
+        try:
+            if host.process.poll() is None:
+                os.killpg(host.process.pid, signal.SIGTERM)
+        except (ProcessLookupError, AttributeError):
+            pass
 
 
 class OpenCodeHost:
@@ -643,10 +933,24 @@ class OpenCodeHost:
         self.permissions = {}
         self.base = None
         self.port = 4096
+        # thread/list probe cache: session id -> first-user-message title
+        # (None = confirmed empty shell). Persisted in the session folder so a
+        # bridge restart does not re-probe every session again.
+        self.session_probe = self.load_session_probe()
+        # Deleted session ids (bridge-side tombstones): opencode's DELETE is a
+        # fake success, so deletion is enforced here across list/read.
+        self.tombstones = self.load_tombstones()
+        # restart_server() wakes the event loop instantly and only reports the
+        # restart back once the SSE stream has re-attached (events_live) — a
+        # switch reply that races the event stream loses fast replies.
+        self.wakeup = threading.Event()
+        self.events_live = threading.Event()
         import re as _re
         match = _re.search(r'--port[= ](\d+)', command)
         if match:
             self.port = int(match.group(1))
+        # Kept verbatim so restart_server() can re-exec the exact same command.
+        self.command = command
         self.process = subprocess.Popen(command, shell=True, executable='/bin/sh',
                                         stdin=subprocess.DEVNULL, stdout=sys.stderr,
                                         stderr=sys.stderr, start_new_session=True,
@@ -674,6 +978,130 @@ class OpenCodeHost:
     def base_for_call(self):
         return self.base if self.base else 'http://127.0.0.1:%d' % self.port
 
+    def load_session_probe(self):
+        try:
+            data = json.loads((self.folder / 'probe.json').read_text())
+            return dict(data) if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def save_session_probe(self):
+        try:
+            tmp = self.folder / 'probe.json.tmp'
+            tmp.write_text(json.dumps(self.session_probe))
+            tmp.replace(self.folder / 'probe.json')
+        except OSError:
+            pass
+
+    def load_tombstones(self):
+        try:
+            data = json.loads((self.folder / 'tombstones.json').read_text())
+            return set(data) if isinstance(data, list) else set()
+        except (OSError, ValueError):
+            return set()
+
+    def save_tombstones(self):
+        tmp = self.folder / 'tombstones.json.tmp'
+        tmp.write_text(json.dumps(sorted(self.tombstones)))
+        tmp.replace(self.folder / 'tombstones.json')
+
+    def _reclaim_stale_serve(self):
+        """Reclaim the port from a stale `opencode serve` left by an earlier
+        bridge. All holders must look like our own serve (cmdline contains
+        `opencode`); any foreign holder raises instead of being killed."""
+        def holders():
+            try:
+                out = subprocess.run(['fuser', '%d/tcp' % self.port],
+                                     capture_output=True, text=True, timeout=5)
+                return out.stdout.split()
+            except Exception:
+                return None
+        pids = holders()
+        if pids:
+            for pid in pids:
+                try:
+                    cmd = Path('/proc/%s/cmdline' % pid).read_bytes()\
+                        .replace(b'\0', b' ').decode('utf-8', 'ignore')
+                except OSError:
+                    cmd = ''
+                if 'opencode' not in cmd:
+                    raise RuntimeError('端口 %d 被非 LanGPT 进程(pid %s)占用，未结束'
+                                       % (self.port, pid))
+            try:
+                subprocess.run(['fuser', '-k', '-KILL', '%d/tcp' % self.port],
+                               capture_output=True, timeout=5)
+            except Exception:
+                pass
+            time.sleep(1)
+            if holders():
+                raise RuntimeError('端口 %d 上的残留服务未能结束，请重试' % self.port)
+        else:
+            raise RuntimeError('端口 %d 仍被占用且无法识别占用进程' % self.port)
+
+    def restart_server(self):
+        """Re-exec the `opencode serve` child so it reloads provider config.
+
+        Entry-to-entry switches rewrite opencode.json/auth.json from the phone;
+        serve only reads that config at startup, so the child must be replaced.
+        The bridge itself (and the phone's SSH transport) keeps running.
+
+        Stop only the process group created by this host. Never kill an
+        unrelated process simply because it is listening on the same port.
+        """
+        with self.lock:
+            if self.active or self.permissions:
+                raise RuntimeError('远端仍有任务或待处理审批，不能切换模型')
+            if self.process.poll() is None:
+                os.killpg(self.process.pid, signal.SIGTERM)
+                try:
+                    self.process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    os.killpg(self.process.pid, signal.SIGKILL)
+                    self.process.wait(timeout=5)
+            deadline = time.time() + 10
+            while time.time() < deadline:
+                probe = socket.socket()
+                probe.settimeout(0.5)
+                try:
+                    probe.connect(('127.0.0.1', self.port))
+                except OSError:
+                    break
+                finally:
+                    probe.close()
+                time.sleep(0.2)
+            else:
+                # Port still busy after our own child died: the holder is
+                # either a stale `opencode serve` from an earlier bridge
+                # (ours — safe and REQUIRED to reclaim, otherwise switching
+                # back to the custom channel is permanently blocked) or a
+                # genuinely foreign process (must never be killed).
+                self._reclaim_stale_serve()
+            self.events_live.clear()
+            self.wakeup.set()  # event loop retries attaching right away
+            self.process = subprocess.Popen(self.command, shell=True, executable='/bin/sh',
+                                            stdin=subprocess.DEVNULL, stdout=sys.stderr,
+                                            stderr=sys.stderr, start_new_session=True,
+                                            env=spawn_env(strip_provider_keys=True))
+            (self.folder / 'server.pid').write_text(str(self.process.pid))
+        deadline = time.time() + 30
+        while time.time() < deadline:
+            try:
+                self.http('GET', '/global/health', timeout=3)
+                break
+            except Exception:
+                time.sleep(0.2)
+        else:
+            raise RuntimeError('opencode serve did not come back healthy')
+        # Do not report success until the SSE stream has re-attached: a prompt
+        # fired right after the switch reply can complete inside the event
+        # loop's retry window, and every text event would be lost.
+        deadline = time.time() + 10
+        while time.time() < deadline and not self.events_live.is_set():
+            self.wakeup.set()
+            time.sleep(0.1)
+        if not self.events_live.is_set():
+            raise RuntimeError('事件流未能在重启后重连')
+
     def reply(self, peer, ident, result):
         if ident is not None:
             peer.send(dict(id=ident, result=result))
@@ -690,11 +1118,18 @@ class OpenCodeHost:
                 self.event_cycle()
             except Exception:
                 pass
-            time.sleep(3)
+            self.events_live.clear()
+            # Woken immediately after a serve restart instead of always
+            # sleeping the full 3s — flash-model replies can start and finish
+            # inside one retry sleep, and the phone would miss every text
+            # event ("model returned but nothing displayed").
+            self.wakeup.wait(3)
+            self.wakeup.clear()
 
     def event_cycle(self):
         request = urllib.request.Request(self.base_for_call() + '/api/event?follow=true')
         with urllib.request.urlopen(request, timeout=120) as stream:
+            self.events_live.set()
             for raw in stream:
                 line = raw.decode('utf-8', 'replace').strip()
                 if not line.startswith('data: '):
@@ -715,6 +1150,9 @@ class OpenCodeHost:
         out = []
 
         def emit(method, **params):
+            item = params.get('item')
+            if method == 'item/completed' and isinstance(item, dict) and item.get('type') == 'agentMessage':
+                item.setdefault('completedAt', int(time.time() * 1000))
             out.append(dict(method=method, params=params))
 
         if etype == 'session.next.prompted':
@@ -871,32 +1309,135 @@ class OpenCodeHost:
                     threading.Timer(1.0, stop).start()
                 return
             if method == 'thread/delete':
-                # opencode DELETE /api/session/{id} is idempotent (200 even when
-                # the session is already gone), so a missing session is success.
+                # opencode 1.19.4 DELETE /api/session/{id} is a FAKE success:
+                # it answers 200 text/html (SPA fallback) and the session stays
+                # in the store. Real deletion therefore happens via a persisted
+                # bridge-side tombstone that thread/list and thread/read honor.
                 tid = params.get('threadId', '')
                 if tid:
                     try:
                         self.http('DELETE', '/api/session/%s' % tid)
                     except Exception:
                         pass
+                    self.tombstones.add(tid)
+                    self.save_tombstones()
+                    # cross-channel deletes (a codex id arriving here) must
+                    # also land in the shared file or listOther resurrects it
+                    remember_tombstone(tid)
                     self.active.discard(tid)
                 self.reply(peer, ident, {})
                 return
             if method == 'thread/list':
+                tombstones = self.tombstones | _latest_tombstones()
                 sessions = self.http('GET', '/api/session').get('data', [])
-                threads = []
+                now_ms = int(time.time() * 1000)
+                # Message probes needed this round: untitled "New session"
+                # entries without a cached title, plus anything updated in the
+                # last 30 minutes (its live/finished state cannot be cached).
+                probe_ids = []
                 for s in sessions:
                     if not isinstance(s, dict):
                         continue
-                    threads.append({'id': s.get('id', ''),
-                                    'name': s.get('title') or s.get('name') or '',
+                    sid = s.get('id', '')
+                    if sid in tombstones:
+                        continue
+                    if sid in self.active:
+                        continue
+                    title = (s.get('title') or s.get('name') or '').strip()
+                    updated = int((s.get('time') or {}).get('updated') or 0)
+                    if (((not title or title.startswith('New session')) and sid not in self.session_probe)
+                            or (updated and now_ms - updated < 30 * 60 * 1000)):
+                        probe_ids.append(sid)
+
+                def probe_messages(sid):
+                    try:
+                        return sid, self.http('GET', '/api/session/%s/message' % sid, timeout=10).get('data', [])
+                    except Exception:
+                        return sid, []
+
+                # Probes run concurrently: a serial sweep holds the bridge's
+                # global receive lock for seconds and stalls every other RPC
+                # (handshake, thread/read) behind it.
+                probed = {}
+                if probe_ids:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+                        probed = dict(pool.map(probe_messages, probe_ids))
+
+                def first_user_text(msgs):
+                    for m in reversed(msgs):
+                        info = m.get('info') if isinstance(m.get('info'), dict) else m
+                        if (info.get('role') or info.get('type')) != 'user':
+                            continue
+                        text = info.get('text', '') or ' '.join(
+                            str(p.get('text', '')) for p in (info.get('content') or [])
+                            if isinstance(p, dict) and p.get('type') == 'text')
+                        if text.strip():
+                            return text.strip()[:40]
+                    return None
+
+                threads = []
+                dirty = False
+                for s in sessions:
+                    if not isinstance(s, dict):
+                        continue
+                    title = (s.get('title') or s.get('name') or '').strip()
+                    sid = s.get('id', '')
+                    if sid in tombstones:
+                        continue
+                    if (not title or title.startswith('New session')) and sid not in self.active:
+                        # opencode auto-titles REAL conversations "New session -
+                        # <ts>" too; empty shells stay hidden, real ones are
+                        # listed under their first user message.
+                        if sid not in self.session_probe:
+                            self.session_probe[sid] = first_user_text(probed.get(sid, []))
+                            dirty = True
+                        first = self.session_probe[sid]
+                        if not first:
+                            continue
+                        title = first
+                    active = sid in self.active
+                    if not active:
+                        # After a bridge restart self.active is empty while a
+                        # task may still be running server-side: a last message
+                        # without a finish flag means the turn is in flight.
+                        msgs = probed.get(sid)
+                        if msgs:
+                            head = msgs[0].get('info') if isinstance(msgs[0].get('info'), dict) else msgs[0]
+                            if not str(head.get('finish') or '').strip():
+                                active = True
+                    threads.append({'id': sid,
+                                    'name': title,
                                     'cwd': (s.get('location') or {}).get('directory', ''),
-                                    'status': {'type': 'active' if s.get('id') in self.active else 'idle'},
+                                    'status': {'type': 'active' if active else 'idle'},
                                     'updatedAt': int((s.get('time') or {}).get('updated') or 0)})
+                if dirty:
+                    self.save_session_probe()
                 self.reply(peer, ident, {'data': threads})
                 return
+            if method == 'thread/unsubscribe':
+                # opencode has no push-subscription concept (sessions are read
+                # on demand over HTTP); codex clients unsubscribe when leaving
+                # a thread. No-op success keeps releaseThread() quiet.
+                self.reply(peer, ident, {})
+                return
             if method == 'thread/start':
-                body = {'location': {'directory': params.get('cwd') or str(Path.home())}}
+                # Phone sessions get a dedicated workspace, NOT $HOME: the
+                # agent runs with bash/file tools and would otherwise treat
+                # the whole home directory as its context (verified: a flash
+                # model read ~/.hermes config and dumped a provider table plus
+                # an API key tail into chat).
+                if params.get('cwd'):
+                    directory = params['cwd']
+                else:
+                    directory = str(Path.home() / 'lanpt-workspace')
+                    os.makedirs(directory, exist_ok=True)
+                    agents = Path(directory) / 'AGENTS.md'
+                    if not agents.exists():
+                        try:
+                            agents.write_text(WORKSPACE_AGENTS_MD, encoding='utf-8')
+                        except Exception:
+                            pass
+                body = {'location': {'directory': directory}}
                 created = self.http('POST', '/api/session', body).get('data', {})
                 thread_id = created.get('id', '')
                 self.last_thread = thread_id
@@ -904,13 +1445,41 @@ class OpenCodeHost:
                                                     'cwd': (created.get('location') or {}).get('directory', ''),
                                                     'status': {'type': 'idle'}}})
                 return
+            if method == 'thread/listOther':
+                # Cross-channel listing: while this opencode bridge serves the
+                # custom channel, surface the codex channel's sessions from
+                # its rollout files (recent must survive channel switches).
+                self.reply(peer, ident, {'data': codex_other_sessions()})
+                return
+            if method == 'thread/readOther':
+                turns = codex_other_turns(params.get('threadId', ''))
+                self.reply(peer, ident, {'thread': {'id': params.get('threadId', ''),
+                                                    'status': {'type': 'idle'},
+                                                    'turns': turns}})
+                return
             if method in ('thread/read', 'thread/resume'):
                 thread_id = params.get('threadId', '')
+                if thread_id in self.tombstones or thread_id in _latest_tombstones():
+                    # Deleted on this bridge: report not-found so clients purge
+                    # any local stub instead of resurrecting it.
+                    peer.send(dict(id=ident, error=dict(code=-32600,
+                                                        message='no such thread: %s' % thread_id)))
+                    return
                 self.last_thread = thread_id
-                turns = self.history_turns(thread_id)
-                self.reply(peer, ident, {'thread': {'id': thread_id,
-                                                    'status': {'type': 'active' if thread_id in self.active else 'idle'}},
-                                         'turns': turns})
+                turns, model = self.history_turns(thread_id)
+                # turns must live INSIDE the thread object — the phone's
+                # ThreadSnapshot reads thread.turns (codex bridge shape).
+                # A top-level turns key rendered every custom-channel history
+                # empty (chat page showed only the read-only banner).
+                response = {'thread': {'id': thread_id,
+                                       'status': {'type': 'active' if thread_id in self.active else 'idle'},
+                                       'turns': turns}}
+                # Opening a past conversation must not leave the picker on
+                # "default model": report the session's last-used model so the
+                # phone can restore the display.
+                if model:
+                    response['model'] = model
+                self.reply(peer, ident, response)
                 return
             if method == 'turn/start':
                 thread_id = params.get('threadId', '')
@@ -926,11 +1495,8 @@ class OpenCodeHost:
                     # prompt: a model passed in the prompt body is ignored and
                     # the session silently falls back to the config default.
                     # Set it on the session first so the switch takes effect.
-                    try:
-                        self.http('POST', '/api/session/%s/model' % thread_id,
-                                  {'model': {'providerID': provider, 'id': model_id}})
-                    except Exception:
-                        pass
+                    self.http('POST', '/api/session/%s/model' % thread_id,
+                              {'model': {'providerID': provider, 'id': model_id}})
                     body['model'] = {'id': model_id, 'providerID': provider}
                 result = self.http('POST', '/api/session/%s/prompt' % thread_id, body).get('data', {})
                 self.last_prompt[thread_id] = result.get('id', '')
@@ -950,6 +1516,20 @@ class OpenCodeHost:
                     'turn': {'id': self.last_prompt.get(sid, ''), 'status': 'completed'}}))
                 self.push(dict(method='thread/status/changed', params={'threadId': sid,
                     'status': {'type': 'idle'}}))
+                return
+            if method == 'server/restart':
+                # Entry-to-entry custom-model switch: the phone has already
+                # rewritten opencode.json/auth.json over SFTP and asks the
+                # bridge to re-exec its `opencode serve` child so the new
+                # provider config takes effect (serve reads config once at
+                # startup). Only the serve child restarts — the bridge and the
+                # phone's SSH session stay fully connected; the SSE loop
+                # re-attaches on its own.
+                try:
+                    self.restart_server()
+                    self.reply(peer, ident, {'restarted': True})
+                except Exception as exc:
+                    self.reply(peer, ident, {'restarted': False, 'error': str(exc)})
                 return
             if method == 'model/list':
                 # opencode advertises every provider it knows (built-in free /
@@ -1009,7 +1589,9 @@ class OpenCodeHost:
                 peer.send(dict(id=ident, error=dict(code=-32000, message='opencode 适配错误: %s' % e)))
 
     def history_turns(self, thread_id):
+        """Rebuild phone-protocol turns and the session's last-used model id."""
         turns = []
+        model = ''
         try:
             # opencode returns newest-first; the app renders oldest-first.
             messages = list(reversed(self.http('GET', '/api/session/%s/message' % thread_id).get('data', [])))
@@ -1041,17 +1623,39 @@ class OpenCodeHost:
                         continue
                     if part.get('type') == 'text':
                         items.append({'id': part.get('id', mid + '-t'), 'type': 'agentMessage',
-                                      'text': part.get('text', '')})
+                                      'text': part.get('text', ''),
+                                      'completedAt': (info.get('time') if isinstance(info.get('time'), dict) else {}).get('completed')})
                     elif part.get('type') == 'reasoning':
                         items.append({'id': part.get('id', mid + '-r'), 'type': 'reasoning',
                                       'text': part.get('text', '')})
                     elif part.get('type') == 'tool':
+                        # opencode keeps the command under state.input.command
+                        # and the captured output under state.content[].text;
+                        # the phone's execution detail reads `aggregatedOutput`.
+                        state = part.get('state') or {}
+                        cmd = (state.get('input') or {}).get('command') \
+                            or part.get('tool') or part.get('name', '')
+                        captured = '\n'.join(
+                            str(c.get('text', '')) for c in (state.get('content') or [])
+                            if isinstance(c, dict) and c.get('type') == 'text').strip()
                         items.append({'id': part.get('id', mid + '-c'), 'type': 'commandExecution',
-                                      'command': part.get('tool', ''),
-                                      'state': {'status': 'completed'}})
+                                      'command': cmd,
+                                      'aggregatedOutput': captured,
+                                      'state': {'status': state.get('status', 'completed')}})
                 if items:
                     turns.append({'id': mid, 'status': 'completed', 'items': items})
-        return turns
+        # The newest assistant message carries the session's model binding
+        # ({providerID, id}); messages were reversed to oldest-first above, so
+        # scan the original tail.
+        for m in reversed(messages):
+            info = m.get('info') if isinstance(m.get('info'), dict) else m
+            if not isinstance(info, dict) or (info.get('role') or info.get('type')) == 'user':
+                continue
+            bound = info.get('model') or {}
+            if isinstance(bound, dict) and bound.get('providerID') and bound.get('id'):
+                model = '%s/%s' % (bound['providerID'], bound['id'])
+            break
+        return turns, model
 
     def attach(self, sock):
         peer = Peer(sock)
@@ -1121,17 +1725,38 @@ def rpc_once(sock, request, timeout=4.0):
 
 
 def wait_pid_exit(folder, timeout=8.0):
+    """Wait for the exact bridge daemon PID to exit; return its outcome."""
     try:
         pid = int((folder / 'daemon.pid').read_text())
     except (OSError, ValueError):
-        return
+        return True
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
             os.kill(pid, 0)
         except OSError:
-            return
+            return True
         time.sleep(.1)
+    return False
+
+
+def retire_granted_legacy_daemon(folder):
+    """Compatibility escape hatch for old bridge versions whose granted
+    shutdownIfIdle killed only their child, leaving the protocol daemon/socket
+    alive forever. Called only after that daemon explicitly granted idle-safe
+    shutdown; daemon.pid identifies our own start_new_session process group."""
+    try:
+        pid = int((folder / 'daemon.pid').read_text())
+        cmd = Path('/proc/%d/cmdline' % pid).read_bytes().replace(b'\0', b' ')
+        if b'--daemon' not in cmd or str(folder).encode() not in cmd:
+            raise RuntimeError('远端旧桥身份校验失败，未终止')
+        os.killpg(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    except (OSError, ValueError) as exc:
+        raise RuntimeError('远端旧桥未退出且无法安全回收: %s' % exc)
+    if not wait_pid_exit(folder, timeout=3.0):
+        raise RuntimeError('远端旧桥未能退出，请重试')
 
 
 def upgrade_if_stale(sock, folder, command, runtime='codex'):
@@ -1157,7 +1782,7 @@ def upgrade_if_stale(sock, folder, command, runtime='codex'):
         wait_pid_exit(folder)
         replacement = connect_socket(folder)
         if replacement is None:
-            spawn_daemon(folder, command)
+            spawn_daemon(folder, command, runtime)
             replacement = wait_socket(folder)
             if replacement is None:
                 raise RuntimeError('远端会话服务升级失败，请查看 ' + str(folder / 'daemon.log'))
@@ -1167,30 +1792,11 @@ def upgrade_if_stale(sock, folder, command, runtime='codex'):
             sock.close()
         except OSError:
             pass
-        wait_pid_exit(folder)
-        spawn_daemon(folder, command, runtime)
-        replacement = wait_socket(folder)
-        if replacement is None:
-            raise RuntimeError('远端会话服务升级失败，请查看 ' + str(folder / 'daemon.log'))
-        return replacement
-    result = (probe or {}).get('result') or {}
-    if not result.get('lastThread') and not result.get('threads'):
-        # An old daemon that never hosted a session refuses shutdownIfIdle only
-        # because it is uninitialized; it owns nothing. Kill its process group
-        # (daemon + its idle app-server child) and start the upgraded script.
-        try:
-            sock.close()
-        except OSError:
-            pass
-        try:
-            pid = int((folder / 'daemon.pid').read_text())
-            try:
-                os.killpg(pid, signal.SIGTERM)
-            except OSError:
-                os.kill(pid, signal.SIGTERM)
-        except (OSError, ValueError):
-            pass
-        wait_pid_exit(folder)
+        # SCRIPT <=26 acknowledged shutdown but left its protocol daemon and
+        # socket alive. Do not spawn into its held lock; retire that verified,
+        # explicitly idle bridge first, then wait for a fresh socket.
+        if not wait_pid_exit(folder, timeout=2.0):
+            retire_granted_legacy_daemon(folder)
         spawn_daemon(folder, command, runtime)
         replacement = wait_socket(folder)
         if replacement is None:

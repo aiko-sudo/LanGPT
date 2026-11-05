@@ -17,6 +17,7 @@ public final class RemoteApp extends Application {
   private final Set<String> deletedThreadIds = new HashSet<>();
   private JSONArray workThreads = new JSONArray();
   private int workRefreshSequence;
+  private final ProjectHistoryFilter historyDirectories = new ProjectHistoryFilter();
 
   private Profile startupProfile() {
     if(profile!=null)return profile;
@@ -103,6 +104,7 @@ public final class RemoteApp extends Application {
   boolean customOverride;
   /** True after the codex backend reported usageLimitExceeded; cleared by a clean turn. */
   boolean mainModelLimited;
+  boolean customSwitching, customSwitchUnavailable;
   /**
    * Conversation context carried across the runtime switch: prepended to the
    * first message of the custom-API session so the new agent can continue the
@@ -155,67 +157,107 @@ public final class RemoteApp extends Application {
     if (c == null || !CustomApiConfig.ready(c)) { failure.accept("请先在后台设置中配置自定义模型"); return; }
     if (!connected || profile == null) { failure.accept("请先连接主机"); return; }
     if (!profile.runtime.equals("codex")) { failure.accept("仅主 ChatGPT 通道支持切换"); return; }
-    final String contextPrefix = customOverride ? "" : buildContextPrefix(items);
+    switchToCustomEntry(c, true, failure);
+  }
+
+  /**
+   * Repoint the custom-API channel at one specific configured entry: rewrite the
+   * PC-side provider/auth files for it, restart the opencode backend and
+   * reconnect. Entry-to-entry switches (already on the custom channel) skip the
+   * conversation context prefix — the opencode session store keeps the thread.
+   */
+  void switchToCustomEntry(CustomApiConfig.Entry c, boolean carryContext, java.util.function.Consumer<String> failure) {
+    if (customSwitching) { failure.accept("模型切换正在进行"); return; }
+    if (!CustomApiConfig.ready(c)) { failure.accept("该 API 配置不完整"); return; }
+    if (!connected || profile == null) { failure.accept("请先连接主机"); return; }
+    if (!profile.runtime.equals("codex") && !profile.runtime.equals("opencode")) { failure.accept("当前通道不支持自定义模型"); return; }
+    checkpoint();
+    for (ConversationState state : conversationStore.values()) {
+      if (state.busy || state.remoteRunning || state.replaying || !state.approvals.isEmpty()) {
+        failure.accept("存在运行中任务或待处理审批，请先完成后切换模型"); return;
+      }
+    }
+    final String contextPrefix = carryContext && !customOverride ? buildContextPrefix(items) : "";
     final CustomApiConfig.Entry entry = c;
+    // Already on the custom channel: the bridge is alive and holds `opencode
+    // serve` as its child. Entry-to-entry switches only need the provider
+    // config rewritten + the serve child re-exec'd — no SSH teardown, no
+    // reconnect. Full reconnect stays reserved for channel hops (codex ↔
+    // opencode), the only switches that change the runtime itself.
+    final boolean hotSwitch = "opencode".equals(profile.runtime);
+    final String switchingThread = threadId;
+    customSwitching = true;
     SshTransport current = transport;
     final int g = generation;
     worker.execute(() -> {
       try {
+        if (!hotSwitch) {
+          // A stale LanGPT opencode serve is safe to reuse/restart through its
+          // bridge; do NOT kill it here: this cold path immediately dials the
+          // new bridge and would race the child respawn, producing "远端正在
+          // 关闭". Only a foreign listener is a real conflict.
+          String probe = "pids=$(fuser 4610/tcp 2>/dev/null); "
+              + "if [ -z \"$pids\" ]; then echo FREE; exit 0; fi; "
+              + "for p in $pids; do tr '\\0' ' ' < /proc/$p/cmdline 2>/dev/null | grep -q opencode || { echo FOREIGN; exit 0; }; done; "
+              + "echo OWN";
+          String verdict = current.runCommand(probe).trim();
+          if ("FOREIGN".equals(verdict)) throw new java.io.IOException("端口 4610 被非 LanGPT 进程占用，未终止；请检查该端口上的程序");
+        }
         current.ensureDirectory(".config/opencode");
         current.ensureDirectory(".local/share/opencode");
         String oldCfg = current.readTextFile(".config/opencode/opencode.json");
-        current.writeTextFile(".config/opencode/opencode.json", CustomApiConfig.mergeProviderConfig(oldCfg, entry.baseUrl, entry.model, entry.apiKey));
         String oldAuth = current.readTextFile(".local/share/opencode/auth.json");
-        current.writeTextFile(".local/share/opencode/auth.json", CustomApiConfig.mergeAuthConfig(oldAuth, entry.apiKey));
-        // opencode serve reads its config once at startup: without this restart
-        // the old (possibly wrong) provider config keeps serving requests.
-        // Match by daemon.pid + last argv (the runtime), never `pkill -f`
-        // (self-matching would kill this shell), and kill the port owner by
-        // socket instead of by pattern.
-        current.runCommand("fuser -k 4610/tcp >/dev/null 2>&1; "
-            + "for f in $HOME/.remote-gpt/*/daemon.pid; do p=$(cat \"$f\" 2>/dev/null); "
-            + "if [ -n \"$p\" ] && [ \"$(tr '\\0' '\\n' < /proc/$p/cmdline 2>/dev/null | tail -1)\" = \"opencode\" ]; "
-            + "then kill \"$p\" 2>/dev/null; fi; done; sleep 1; echo RESTARTED");
+        String newCfg = CustomApiConfig.mergeProviderConfig(oldCfg, entry.baseUrl, entry.model, entry.apiKey);
+        String newAuth = CustomApiConfig.mergeAuthConfig(oldAuth, entry.apiKey);
+        CustomConfigTransaction.apply(this, current, oldCfg, oldAuth, newCfg, newAuth);
+
       } catch (Exception e) {
         String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-        if (g == generation) main.post(() -> failure.accept(message));
+        main.post(() -> { if (g == generation) { customSwitching = false; failure.accept(message); changed(); } });
         return;
       }
       if (g != generation) return;
-      // Local handoff snapshot: even if both server-side histories vanish,
-      // the carried context stays on the phone.
-      try {
-        java.io.File dir = new java.io.File(getFilesDir(), "history-handoff");
-        //noinspection ResultOfMethodCallIgnored
-        dir.mkdirs();
-        java.io.File snapshot = new java.io.File(dir, System.currentTimeMillis() + ".txt");
-        snapshot.createNewFile();
-        java.io.FileOutputStream out = new java.io.FileOutputStream(snapshot);
-        out.write(contextPrefix.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        out.close();
-        // Keep the newest 20 handoffs only.
-        java.io.File[] all = dir.listFiles();
-        if (all != null && all.length > 20) {
-          java.util.Arrays.sort(all, (a, b) -> Long.compare(a.lastModified(), b.lastModified()));
-          for (int i = 0; i < all.length - 20; i++) //noinspection ResultOfMethodCallIgnored
-            all[i].delete();
-        }
-      } catch (Exception ignored) {
-      }
       main.post(() -> {
-        Profile copy = Profile.from(profile.json());
-        copy.runtime = "opencode";
-        copy.command = "opencode serve --port 4610 --hostname 127.0.0.1";
+        if (g != generation) return;
+        if (hotSwitch) {
+          request("server/restart", new JSONObject(), r -> {
+            customSwitching = false;
+            if (!r.optBoolean("restarted")) { customSwitchUnavailable = true; failure.accept(r.optString("error", "后端重启失败") + "，请重新连接后再发送"); changed(); return; }
+            CustomApiConfig config = customApi(); config.activeId = entry.id; saveCustomApi(config);
+            inConversation(switchingThread, () -> {
+              model = CustomApiConfig.PROVIDER_ID + "/" + entry.model;
+              effectiveModel = model;
+              preferences.rememberLastSessionChoices(profile);
+            });
+            refreshModels(); changed();
+          }, e -> { customSwitching = false; customSwitchUnavailable = true; failure.accept("模型状态未知，请重新连接后再发送"); changed(); });
+          return;
+        }
         // The custom model must be the session default, not the ChatGPT one.
         model = CustomApiConfig.PROVIDER_ID + "/" + entry.model;
         effectiveModel = model;
-        pendingContextPrefix = contextPrefix;
         customOverride = true;
         mainModelLimited = false;
+        changed(); // repaint the input bar's model name at once
+        Profile copy = Profile.from(profile.json());
+        copy.runtime = "opencode";
+        copy.command = "opencode serve --port 4610 --hostname 127.0.0.1";
+        // connect() restores the last saved model choice per channel slot
+        // (profile.id + runtime). app.profile is still the codex one here, so
+        // the choice must be filed under the opencode slot explicitly — the
+        // no-arg remember() would pollute the primary slot with a lanpt id
+        // (verified: returning to the primary then restored the wrong model).
+        preferences.rememberLastSessionChoices(copy);
         // Let the previous SSH session/daemon teardown settle before dialing
         // the new runtime, otherwise the first attempt can hit
         // "远端正在关闭" (remote closing) on the half-closed transport.
-        main.postDelayed(() -> connect(copy), 600);
+        main.postDelayed(() -> {
+          if (g != generation) return;
+          connect(copy);
+          customSwitching = false;
+          pendingContextPrefix = contextPrefix;
+          checkpoint();
+        }, 600);
       });
     });
   }
@@ -395,6 +437,7 @@ public final class RemoteApp extends Application {
       c.cwd = thread.optString("cwd"); c.remoteRunning = true; c.readOnly = true;
       result.put(id, c);
     }
+    result.values().removeIf(c -> historyDirectories.missing(c.cwd));
     return new ArrayList<>(result.values());
   }
 
@@ -403,6 +446,7 @@ public final class RemoteApp extends Application {
   void landHome() {
     pendingHomeLanding = false;
     pendingNavigation = "";
+    leaveIdleConversation();
     conversationStore.select("");
     restoreLastSessionChoices();
     homeVisible = true;
@@ -432,6 +476,32 @@ public final class RemoteApp extends Application {
   void openConversation(String id) {
     if (!canSwitchConversation()) { pendingNavigation=id; return; }
     viewConversation(id);
+  }
+
+  /** Viewing another channel keeps its history read-only until explicit resume. */
+  private void openCrossChannelConversation(ConversationState s) {
+    select(s.threadId);
+    if (model.isEmpty()) model = preferences.lastSessionModel();
+    ctxUsedTokens = -1;
+    readOnly = true; busy = false; error = "";
+    homeVisible = false;
+    pendingContextPrefix = buildContextPrefix(items);
+    state = "另一通道（" + s.runtime + "）历史";
+    changed();
+  }
+
+  private void resumeCrossChannel(ConversationState source) {
+    java.util.List<ChatItem> history = new ArrayList<>(source.items);
+    String prefix = buildContextPrefix(history);
+    String title = source.title, cwd = source.cwd;
+    select("");
+    if (model.isEmpty()) model = preferences.lastSessionModel();
+    items.clear(); items.addAll(history);
+    threadTitle = title; threadCwd = cwd;
+    pendingContextPrefix = prefix;
+    readOnly = false; busy = false; error = ""; homeVisible = false;
+    state = "已接续 · 下一条消息将在当前通道创建会话";
+    changed();
   }
 
   private void refreshOtherLegacyThreads(String restored) {
@@ -534,6 +604,33 @@ public final class RemoteApp extends Application {
     return Json.object(thread, "status").optString("type").equals("active");
   }
 
+  /** Merge current and other-channel remote listings without reviving stale cache rows. */
+  public JSONArray visibleThreads() {
+    JSONArray out = new JSONArray();
+    for (int i = 0; i < threads.length(); i++) {
+      JSONObject t = threads.optJSONObject(i);
+      if (t != null && !historyDirectories.missing(t.optString("cwd"))) out.put(t);
+    }
+    // Remote-sourced rows from the OTHER channel (thread/listOther).
+    for (int i = 0; i < otherChannelThreads.length(); i++) {
+      JSONObject t = otherChannelThreads.optJSONObject(i);
+      if (t == null || historyDirectories.missing(t.optString("cwd"))) continue;
+      String oid = t.optString("id");
+      // Local deletes must hide cross-channel rows immediately, even before
+      // the bridge-side shared tombstone round-trips through listOther.
+      if (deletedThreadIds.contains(oid)) continue;
+      boolean duplicate = false;
+      for (int n = 0; n < out.length(); n++) {
+        JSONObject existing = out.optJSONObject(n);
+        if (existing != null && existing.optString("id").equals(oid)) { duplicate = true; break; }
+      }
+      if (!duplicate) out.put(t);
+    }
+    return out;
+  }
+
+  public JSONArray threadsRaw() { return threads; }
+
   void leaveIdleConversation() {
     if (attaching || busy || replaying || currentThreadRunning() || threadId.isEmpty()) return;
     releaseThread(threadId);
@@ -541,9 +638,95 @@ public final class RemoteApp extends Application {
     checkpoint();
   }
 
+  /** opencode session ids start with ses_ (e.g. ses_e564...); codex threads
+   * are urn-style uuids. Lets pre-V2.0.27 caches (empty runtime field) still
+   * resolve their channel. */
+  static String inferredChannel(String id) {
+    return id != null && id.startsWith("ses_") ? "opencode" : "codex";
+  }
+
+  static String conversationChannel(String id, String cachedRuntime) {
+    if (id.startsWith("ses_")) return "opencode";
+    if (id.matches("(?i)(urn:uuid:)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) return "codex";
+    return cachedRuntime == null || cachedRuntime.isEmpty() ? inferredChannel(id) : cachedRuntime;
+  }
+
+  private JSONArray otherChannelThreads = new JSONArray();
+  private int otherChannelGeneration = -1;
+  private int otherChannelRefreshSequence;
+
+  /** Pull the OTHER channel's session list from the bridge (rollout files /
+   * read-only store on the PC) so recent survives channel switches. */
+  void refreshOtherChannelThreads() {
+    if (!connected || profile == null) return;
+    final int g = generation;
+    final int sequence = ++otherChannelRefreshSequence;
+    otherChannelThreads = new JSONArray();
+    otherChannelGeneration = g;
+    request("thread/listOther", Json.obj(), r -> {
+      if (g != generation || sequence != otherChannelRefreshSequence) return;
+      JSONArray data = r.optJSONArray("data");
+      if (data == null) data = new JSONArray();
+      String mine = profile == null ? "" : profile.runtime;
+      for (int i = 0; i < data.length(); i++) {
+        JSONObject t = data.optJSONObject(i);
+        if (t != null) try { t.put("runtime", "codex".equals(mine) ? "opencode" : "codex"); } catch (Exception ignored) {}
+      }
+      otherChannelThreads = data;
+      verifyHistoryDirectories(data);
+      changed();
+    }, failure -> {
+      if (g == generation && sequence == otherChannelRefreshSequence) {
+        otherChannelGeneration = -1;
+        reportFailure("thread/listOther", Json.obj(), failure);
+      }
+    });
+  }
+
+  /** Open a conversation from the OTHER channel by fetching its history
+   * through the bridge (readOther); the next prompt continues the task on
+   * the current channel with the context prefix. */
+  private void readOtherThread(String id, String channel) {
+    pendingHomeLanding = false; pendingNavigation = "";
+    select(id);
+    busy = true;
+    conversationLoads.put(id, "正在获取另一通道历史…");
+    changed();
+    request("thread/readOther", Json.obj("threadId", id), r -> {
+      conversationLoads.remove(id);
+      boolean selected = id.equals(threadId);
+      inConversation(id, () -> applyThread(r, id, true));
+      if (selected) checkpoint();
+      ConversationState cached = conversationStore.get(id);
+      if (cached != null) cached.runtime = channel;
+      if (selected && cached != null) openCrossChannelConversation(cached);
+      else changed();
+    }, failure -> {
+      conversationLoads.remove(id);
+      inConversation(id, () -> { busy = false; });
+      if (id.equals(threadId)) reportFailure("thread/readOther", Json.obj("threadId", id), failure);
+      changed();
+    });
+  }
+
   // Browsing history must not resume a writer or update its remote timestamp.
   public void viewConversation(String id) {
     if (!canSwitchConversation() || id.isEmpty()) return;
+    pendingHomeLanding = false; pendingNavigation = "";
+    // Cross-channel id: the current bridge can never serve it via thread/read.
+    if (profile != null) {
+      ConversationState cached = conversationStore.get(id);
+      String channel = conversationChannel(id, cached == null ? "" : cached.runtime);
+      if (!channel.equals(profile.runtime)) {
+        if (cached != null && !cached.items.isEmpty()) {
+          cached.runtime = channel;   // backfill for older caches
+          openCrossChannelConversation(cached);
+        } else {
+          readOtherThread(id, channel);   // fetch from the other channel's store
+        }
+        return;
+      }
+    }
     // Explicit navigation wins over a late automatic home-landing callback.
     pendingHomeLanding = false; pendingNavigation = "";
     checkpoint();
@@ -552,6 +735,10 @@ public final class RemoteApp extends Application {
     ctxUsedTokens = -1;
     boolean loaded = loadedThreads.contains(id);
     select(id);
+    if (model.isEmpty()) model = preferences.lastSessionModel();
+    if (loaded && !currentThreadRunning()) {
+      releaseThread(id); readOnly = true; changed(); return;
+    }
     if (loaded || conversationLoads.containsKey(id) || id.equals(restoringThread)) { changed(); return; }
     busy = true;
     conversationLoads.put(id, "正在获取对话历史…");
@@ -595,10 +782,14 @@ public final class RemoteApp extends Application {
   public void pollReadOnly() {
     if (!connected || !readOnly || busy || readPolling || rpc == null || threadId.isEmpty()) return;
     final String id = threadId;
+    if (profile != null && !conversationChannel(id, "").equals(profile.runtime)) return;
     final int g = generation;
     final RpcClient c = rpc;
     final long revision = statusRevision;
     readPolling = true;
+    // Deletions carried from the codex channel land as bridge tombstones now
+    // that the opencode bridge is reachable.
+    syncTombstonesToBridge();
     worker.execute(() -> c.request("thread/read", Json.obj("threadId", id, "includeTurns", true), (r, e) -> {
           ThreadSnapshot snapshot=e==null?new ThreadSnapshot(r):null;
           main.post(() -> {
@@ -823,6 +1014,21 @@ public final class RemoteApp extends Application {
 
   public void save() {
     try {
+      // Hot-switched custom-channel profiles are runtime COPIES living outside
+      // vault.profiles; the projects page renders the vault entry, so fold the
+      // copy's cwd/projects back in or every useProject()/cwd aggregation is
+      // silently dropped on save (new project folders never showed up).
+      if (profile != null) {
+        for (int i = 0; i < vault.profiles.size(); i++) {
+          Profile p = vault.profiles.get(i);
+          if (p.id.equals(profile.id) && p != profile) {
+            p.cwd = profile.cwd;
+            p.projectRoot = profile.projectRoot;
+            p.projects.clear();
+            p.projects.addAll(profile.projects);
+          }
+        }
+      }
       vault.save();
     } catch (Exception e) {
       error = "保存失败：" + e.getMessage();
@@ -872,6 +1078,8 @@ public final class RemoteApp extends Application {
   }
 
   public void connect(Profile p) {
+    customSwitchUnavailable = false;
+    pendingContextPrefix = "";
     // Clear custom-model mode only when we are leaving it (connecting back to a
     // non-opencode runtime, i.e. the primary ChatGPT channel). When the profile
     // IS the opencode runtime -- the custom-model channel -- keep the flag set,
@@ -890,6 +1098,11 @@ public final class RemoteApp extends Application {
     permissionMode = PermissionMode.INHERIT;
     profile = p;
     if(!sameHost)deletedThreadIds.clear();
+    // Restart-proof deletion: reload this host's persisted tombstone ids (the
+    // opencode store never drops deleted sessions on its own).
+    loadDeletedThreads(p);
+    syncedDeletedThreads.clear();
+    historyDirectories.clear();
     workThreads = new JSONArray();
     journalPath="";journal=new ConversationJournal();effectivePermissionMode=PermissionMode.INHERIT;interactions=new InteractionHistory();savedInteractionRevision=0;
     prepareConnectionLanding();
@@ -1383,6 +1596,7 @@ public final class RemoteApp extends Application {
   }
 
   private void disconnect(boolean stopForegroundService) {
+    customSwitching = false;
     userDisconnected = true;
     modelRefresh.stop();
     forcedApprovalState = new ForcedApprovalController.State();
@@ -1395,6 +1609,8 @@ public final class RemoteApp extends Application {
     pendingImagePreview = null;
     imageUploadIndex = imageUploadCount = 0;
     generation++;
+    otherChannelThreads = new JSONArray();
+    otherChannelGeneration = -1;
     approvalTokens.clear();
     answering.clear();
     main.removeCallbacks(reconnectTask);
@@ -1476,7 +1692,7 @@ public final class RemoteApp extends Application {
     }
     int g = generation;
     String requestThread = params.optString("threadId", threadId);
-    boolean threadRequest = method.startsWith("thread/") && !method.equals("thread/list") && !method.equals("thread/delete")
+    boolean threadRequest = method.startsWith("thread/") && !method.equals("thread/list") && !method.equals("thread/delete") && !method.equals("thread/readOther")
         || method.startsWith("turn/");
     worker.execute(
         () ->
@@ -1563,7 +1779,40 @@ public final class RemoteApp extends Application {
     if (!(cause instanceof RpcException)) return false;
     String message = cause.getMessage() == null ? "" : cause.getMessage().toLowerCase(Locale.ROOT);
     return message.contains("未知适配器会话") || message.contains("not found") || message.contains("no such thread")
-        || message.contains("no rollout found"); // codex: thread has no rollout file on disk either
+        || message.contains("no rollout found") // codex: thread has no rollout file on disk either
+        // Cross-runtime id (an opencode ses_* deleted from the codex channel):
+        // this runtime can never hold it. For the DELETE path that means the
+        // remote has nothing to remove — purge locally; the tombstone is
+        // written later when the custom channel reconnects.
+        || message.contains("invalid thread id");
+  }
+
+  /** Persist deleted-thread ids per host profile so a restart does not
+   * resurrect sessions the user removed (the opencode store keeps them). */
+  private void saveDeletedThreads() {
+    if (profile == null) return;
+    getSharedPreferences("deletedThreads", MODE_PRIVATE)
+        .edit().putStringSet(profile.id, new java.util.HashSet<>(deletedThreadIds)).apply();
+  }
+
+  private void loadDeletedThreads(Profile p) {
+    deletedThreadIds.clear();
+    if (p != null)
+      deletedThreadIds.addAll(getSharedPreferences("deletedThreads", MODE_PRIVATE)
+          .getStringSet(p.id, Collections.emptySet()));
+  }
+
+  /** Custom-channel deletion is enforced by a bridge tombstone (opencode's
+   * DELETE is a fake success). Entries deleted from the codex channel carry
+   * over: re-issue thread/delete once the opencode bridge is live. */
+  private final Set<String> syncedDeletedThreads = new HashSet<>();
+
+  private void syncTombstonesToBridge() {
+    if (!"opencode".equals(profile == null ? "" : profile.runtime) || rpc == null) return;
+    for (String id : new ArrayList<>(deletedThreadIds)) {
+      if (id.isEmpty() || !syncedDeletedThreads.add(id)) continue;
+      request("thread/delete", Json.obj("threadId", id), ignored -> {}, ignored -> syncedDeletedThreads.remove(id));
+    }
   }
 
   private void purgeDeletedThread(String id) {
@@ -1574,6 +1823,7 @@ public final class RemoteApp extends Application {
     }
     threads = kept;
     deletedThreadIds.add(id);
+    saveDeletedThreads();
     if(id.equals(threadId))landHome();
     conversationStore.remove(id);
     loadedThreads.remove(id);restoreQueue.remove(id);conversationLoads.remove(id);recoveringThreads.remove(id);
@@ -1650,6 +1900,59 @@ public final class RemoteApp extends Application {
     });
   }
 
+  void checkProjectDirectories(Collection<String> paths, java.util.function.Consumer<Map<String, Boolean>> done) {
+    if (!connected || transport == null) { done.accept(null); return; }
+    SshTransport current = transport; int g = generation;
+    List<String> requested = new ArrayList<>(paths);
+    worker.execute(() -> {
+      Map<String, Boolean> result;
+      try { result = ProjectDirectoryCheck.check(current, requested); }
+      catch (Exception e) { result = null; }
+      Map<String, Boolean> checked = result;
+      main.post(() -> { if (g == generation && current == transport) done.accept(checked); });
+    });
+  }
+
+  private void verifyHistoryDirectories(JSONArray rows) {
+    if (rows == null || !connected) return;
+    Set<String> paths = new LinkedHashSet<>();
+    for (int i = 0; i < rows.length(); i++) {
+      JSONObject row = rows.optJSONObject(i);
+      if (row != null && row.optString("cwd").startsWith("/")) paths.add(row.optString("cwd"));
+    }
+    if (paths.isEmpty()) return;
+    Map<String, Integer> tickets = historyDirectories.begin(paths);
+    checkProjectDirectories(paths, result -> {
+      if (historyDirectories.finish(tickets, result)) changed();
+    });
+  }
+
+  /** Custom-model sessions all live under ~/lanpt-workspace; projects the
+   * model creates there are sub-directories the thread cwd aggregation never
+   * sees. List them (one level) so the projects page can show them. */
+  void listWorkspaceProjects(java.util.function.Consumer<java.util.List<String>> done) {
+    if (!connected) { done.accept(null); return; }
+    SshTransport current = transport;
+    final int g = generation;
+    if (current == null) { done.accept(null); return; }
+    worker.execute(() -> {
+      java.util.List<String> out = new java.util.ArrayList<>();
+      try {
+        String listing = current.runCommand(
+            "for d in ~/lanpt-workspace/*/; do [ -d \"$d\" ] && printf '%s\\n' \"$d\"; done 2>/dev/null");
+        for (String line : listing.split("\\n")) {
+          String t = line.trim();
+          if (t.length() > 1 && t.endsWith("/")) out.add(t.substring(0, t.length() - 1));
+        }
+      } catch (Exception e) {
+        main.post(() -> done.accept(null));
+        return;
+      }
+      if (g != generation) return;
+      main.post(() -> done.accept(out));
+    });
+  }
+
   /** Write the starter AGENTS.md template under the project root. */
   void writeAgentsMd(String path, java.util.function.Consumer<Throwable> done) {
     if (!connected) { done.accept(new java.io.IOException("请先连接电脑")); return; }
@@ -1675,6 +1978,7 @@ public final class RemoteApp extends Application {
       if(request!=workRefreshSequence){finished.accept(null);return;}
       JSONArray data=r.optJSONArray("data");
       workThreads=data==null?new JSONArray():data;
+      verifyHistoryDirectories(data);
       if(data!=null && requestedRevision==statusRevision)for(int i=0;i<data.length();i++) {
         JSONObject listed=data.optJSONObject(i);if(listed==null)continue;
         String id=listed.optString("id");
@@ -1717,6 +2021,7 @@ public final class RemoteApp extends Application {
             return;
           }
           JSONArray data = r.optJSONArray("data");
+          verifyHistoryDirectories(data);
           if (!more) threads = new JSONArray();
           if (data != null) for (int i = 0; i < data.length(); i++) {
             JSONObject listed = data.optJSONObject(i);
@@ -1738,7 +2043,7 @@ public final class RemoteApp extends Application {
               JSONObject thread = threads.optJSONObject(i);
               if (thread != null) {
                 String cwd = thread.optString("cwd");
-                if (cwd.startsWith("/") && profile.projects.size() < 200)
+                if (cwd.startsWith("/") && !ProjectVisibility.isHidden(this, profile.id, cwd) && profile.projects.size() < 200)
                   added |= profile.projects.add(cwd);
               }
             }
@@ -1863,7 +2168,8 @@ public final class RemoteApp extends Application {
   }
 
   public String currentProject() {
-    return !threadId.isEmpty() ? threadCwd : profile == null ? "" : profile.cwd;
+    if (profile == null) return "";
+    return homeVisible || threadCwd.isEmpty() ? profile.cwd : threadCwd;
   }
 
   public void reconnectAndResume() {
@@ -1890,6 +2196,7 @@ public final class RemoteApp extends Application {
   public void newChat() {
     if (!canSwitchConversation()) return;
     pendingHomeLanding = false; pendingNavigation = "";
+    String project = currentProject();
     select("");
     restoreLastSessionChoices();
     busy=false; stopping=false; steering=false; replaying=false;
@@ -1900,14 +2207,14 @@ public final class RemoteApp extends Application {
     attaching = false; attachingFiles = false;
     threadId = "";
     threadTitle = "";
-    threadCwd = "";
+    threadCwd = project;
     journalPath="";journal=new ConversationJournal();effectivePermissionMode=PermissionMode.INHERIT;interactions=new InteractionHistory();savedInteractionRevision=0;
     readOnly = false;
     remoteRunning = false;
     turnId = "";
     items.clear();
     error = "";
-    unsentText = ""; draftText="";
+    unsentText = ""; draftText=""; pendingContextPrefix = "";
     changed();
   }
 
@@ -1915,6 +2222,12 @@ public final class RemoteApp extends Application {
     if (!canSwitchConversation() || id.isEmpty() || conversationLoads.containsKey(id)
         || id.equals(restoringThread)) return;
     pendingHomeLanding = false;
+    ConversationState foreign = conversationStore.get(id);
+    if (profile != null && foreign != null && !conversationChannel(id, foreign.runtime).equals(profile.runtime)) {
+      checkpoint();
+      resumeCrossChannel(foreign);
+      return;
+    }
     checkpoint();
     boolean cached = conversationStore.contains(id) && loadedThreads.contains(id);
     select(id);
@@ -1950,11 +2263,31 @@ public final class RemoteApp extends Application {
             busy = false;
             resume(id);
           } else applyThread(r, id, readOnly);
+        },
+        failure -> {
+          // A ses_*/uuid id the current runtime can never parse means the
+          // conversation belongs to the OTHER channel. If a local cache exists
+          // and this is the conversation the user is opening right now, fall
+          // back to the cached history instead of surfacing -32600.
+          ConversationState s = conversationStore.get(id);
+          if (s != null && !s.items.isEmpty() && profile != null && id.equals(threadId)
+              && !inferredChannel(id).equals(profile.runtime)) {
+            if (s.runtime.isEmpty()) s.runtime = inferredChannel(id);
+            openCrossChannelConversation(s);
+            return;
+          }
+          reportFailure("thread/read", Json.obj("threadId", id), failure);
+          busy = false;
+          changed();
         });
   }
 
   public void refreshReadOnly() {
     if (connected && readOnly && !busy) {
+      if (profile != null && !conversationChannel(threadId, "").equals(profile.runtime)) {
+        readOtherThread(threadId, conversationChannel(threadId, ""));
+        return;
+      }
       busy = true; conversationLoads.put(threadId, "正在刷新对话历史…");
       changed();
       readThread(threadId, true);
@@ -2013,8 +2346,16 @@ public final class RemoteApp extends Application {
     }
     resumeDraftThread = "";
     if (!id.equals(threadId)) select(id);
-    if (!readonly && r.has("model") && !r.isNull("model")) model = r.optString("model");
-    if (!readonly && r.has("model") && !r.isNull("model")) effectiveModel = r.optString("model");
+    if (r.has("model") && !r.isNull("model")) {
+      String remoteModel = r.optString("model");
+      // Read-only opens of past conversations must still restore the model
+      // display (otherwise the picker falls back to "默认模型"); adopt the
+      // remote value when none is set yet, and always trust live reads.
+      if ((!remoteModel.isEmpty() && !readonly) || (model.isEmpty() && !remoteModel.isEmpty())) {
+        model = remoteModel;
+        effectiveModel = remoteModel;
+      }
+    }
     if (!readonly && r.has("serviceTier")) {
       serviceTierProtocol = true;
       // remoteReplay is a historical baseline; it must not replace a saved choice/base.
@@ -2030,7 +2371,10 @@ public final class RemoteApp extends Application {
     String path=thread.optString("path");
     if(path.startsWith("/") && !path.equals(journalPath)){journalPath=path;journal=new ConversationJournal();}
     this.readOnly = readonly;
-    remoteRunning = Json.object(thread, "status").optString("type").equals("active");
+    // Read-only opens of history must never present a running state: the
+    // stop button then interrupts an idle remote and hangs, and task cards
+    // start "observing" a turn that finished long ago.
+    remoteRunning = !readonly && Json.object(thread, "status").optString("type").equals("active");
     if (!remoteRunning) taskProgress(id).finish(System.currentTimeMillis());
     threadId = thread.optString("id", id);
     if (!readonly) loadedThreads.add(threadId);
@@ -2052,6 +2396,8 @@ public final class RemoteApp extends Application {
         if (i == turns.length() - 1 && remoteRunning && turn.optString("status").equals("inProgress"))
           taskProgress(id).start(turn.optString("id"), turnStartedMillis(turn), System.currentTimeMillis());
         for (ChatItem incoming : snapshot.turns.get(i)) {
+          if (incoming.type.equals("agentMessage") && incoming.repliedAt == 0 && profile != null)
+            incoming.repliedAt = ReplyTimestamp.load(this, profile.id, id, incoming.id);
           if (incoming.type.equals("reasoning")) {
             preserveReasoning(incoming, knownReasoning.get(incoming.id));
             if (incoming.status.isEmpty()) incoming.status =
@@ -2079,10 +2425,7 @@ public final class RemoteApp extends Application {
     String cwd = thread.optString("cwd");
     if (!cwd.startsWith("/")) cwd = r.optString("cwd");
     threadCwd = cwd.startsWith("/") ? cwd : "";
-    if (cwd.startsWith("/")) {
-      profile.cwd = cwd;
-      profile.projects.add(cwd);
-    }
+    if (cwd.startsWith("/")) profile.projects.add(cwd);
     if (!conversationStore.isScoped()) { profile.lastThread = threadId; save(); }
     if (r.optBoolean("remoteReplay")) {
       // Acknowledge only after the baseline has been applied on the UI thread.
@@ -2147,6 +2490,38 @@ public final class RemoteApp extends Application {
   public void createProject(String parent, String name, java.util.function.Consumer<RemoteDirectory> success,
       java.util.function.Consumer<String> failure) { directories.createProject(parent, name, success, failure); }
 
+  private String projectRootCache = "";
+  private String projectRootConfigured = "@";
+  private int projectRootGeneration = -1;
+
+  /** Project root: the connection's configured projectRoot when set, else the
+   * $HOME/uclaw/project convention on the host. Empty = unavailable. */
+  void resolveProjectRoot(java.util.function.Consumer<String> done) {
+    String configured = profile == null ? "" : profile.projectRoot.trim();
+    if (projectRootGeneration == generation && !projectRootCache.isEmpty()
+        && configured.equals(projectRootConfigured)) {
+      done.accept(projectRootCache);
+      return;
+    }
+    if (!connected) { done.accept(""); return; }
+    SshTransport current = transport;
+    final int g = generation;
+    if (current == null) { done.accept(""); return; }
+    projectRootConfigured = configured;
+    final String candidate = configured.isEmpty() ? "$HOME/uclaw/project" : configured;
+    worker.execute(() -> {
+      String root = "";
+      try {
+        String out = current.runCommand(
+            "d=$(cd \"" + candidate + "\" 2>/dev/null && pwd); [ -n \"$d\" ] && printf '%s' \"$d\"").trim();
+        if (out.startsWith("/")) root = out;
+      } catch (Exception ignored) {}
+      final String r = root;
+      if (g == generation) { projectRootCache = r; projectRootGeneration = generation; }
+      main.post(() -> done.accept(g == generation ? r : ""));
+    });
+  }
+
   public boolean useProject(String path) {
     if (profile == null || !canSwitchConversation()) {
       error = "请先连接主机，并等待当前操作结束";
@@ -2154,9 +2529,11 @@ public final class RemoteApp extends Application {
       return false;
     }
     if (!path.startsWith("/") || path.indexOf('\0') >= 0) return false;
-    profile.cwd = path;
+    ProjectVisibility.setHidden(this, profile.id, path, false);
     profile.projects.add(path);
     newChat();
+    threadCwd = path;
+    changed();
     save();
     return true;
   }
@@ -2518,6 +2895,12 @@ public final class RemoteApp extends Application {
       if (incoming.type.equals("reasoning")) incoming.status = method.equals("item/completed") ? "completed" : "inProgress";
       if (incoming.user()) unsentText = "";
       ChatItem old = find(incoming.id);
+      if (incoming.type.equals("agentMessage")) {
+        if (incoming.repliedAt == 0 && old != null) incoming.repliedAt = old.repliedAt;
+        if (incoming.repliedAt == 0 && method.equals("item/completed") && !historical) incoming.repliedAt = System.currentTimeMillis();
+        if (profile != null && method.equals("item/completed"))
+          ReplyTimestamp.save(this, profile.id, threadId, incoming.id, incoming.repliedAt);
+      }
       if(old!=null && p.optString("turnId").isEmpty() && Json.object(p,"item").optString("turnId").isEmpty())incoming.turnId=old.turnId;
       if (old == null && incoming.user())
         for (ChatItem m : items)

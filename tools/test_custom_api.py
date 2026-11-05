@@ -11,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 JAVA = ROOT / "app/src/main/java/app/remotessh"
 RES = ROOT / "app/src/main/res"
+ASSETS = ROOT / "app/src/main/assets"
 sys_path = ROOT / "tools"
 
 
@@ -101,9 +102,16 @@ class MergeLogic(unittest.TestCase):
 
     def test_api_key_in_options(self):
         # opencode ignores auth.json for custom providers; the key must be in
-        # provider.options.apiKey, otherwise every request 401s.
+        # provider.options.apiKey, otherwise every request 401s. It has to be
+        # the LITERAL key: opencode 1.19.4 sends a {file:}/{env:} reference
+        # string verbatim to the provider (HTTP 401 "api key ...key} is
+        # invalid"), so no indirection is possible on this version.
         doc = json.loads(self.run_case("mergeProviderConfig", "", "https://x/v1", "m", "sk-key123"))
         self.assertEqual(doc["provider"]["lanpt"]["options"]["apiKey"], "sk-key123")
+
+    def test_empty_key_stays_empty(self):
+        doc = json.loads(self.run_case("mergeProviderConfig", "", "https://x/v1", "m", ""))
+        self.assertEqual(doc["provider"]["lanpt"]["options"]["apiKey"], "")
 
     def test_base_url_normalized(self):
         # users paste the full endpoint; SDK appends /chat/completions again
@@ -137,8 +145,8 @@ class MergeLogic(unittest.TestCase):
         self.assertEqual(doc["provider"]["lanpt"]["options"]["baseURL"], "https://new.example.com")
 
     def test_provider_merge_bad_existing_json(self):
-        doc = json.loads(self.run_case("mergeProviderConfig", "not json{{", "https://api.example.com", "m"))
-        self.assertIn("lanpt", doc["provider"])
+        with self.assertRaises(AssertionError):
+            self.run_case("mergeProviderConfig", "not json{{", "https://api.example.com", "m")
 
     def test_auth_merge_preserves_other_credentials(self):
         existing = json.dumps({"github": {"type": "oauth", "token": "t"}})
@@ -160,7 +168,7 @@ class Wiring(unittest.TestCase):
         self.assertIn('model = CustomApiConfig.PROVIDER_ID + "/" + entry.model', src)
         # cross-agent context carry + local handoff snapshot
         self.assertIn("buildContextPrefix(items)", src)
-        self.assertIn('"history-handoff"', src)
+        self.assertNotIn('"history-handoff"', src)
 
     def test_context_carry_injection(self):
         src = (JAVA / "TurnController.java").read_text()
@@ -185,8 +193,11 @@ class Wiring(unittest.TestCase):
     def test_backend_restart_on_switch(self):
         src = (JAVA / "RemoteApp.java").read_text()
         # config is read once by opencode serve -> switch must restart backend
-        self.assertIn("fuser -k 4610/tcp", src)
-        self.assertIn("daemon.pid", src)
+        # Cold path must leave our stale serve alive: the bridge owns child
+        # lifecycle and a phone-side kill races the next handshake ("远端正在关闭").
+        self.assertIn('+ "echo OWN"', src)
+        self.assertIn('"FOREIGN".equals(verdict)', src)
+        self.assertNotIn("fuser -k -KILL 4610/tcp", src)
         # never self-matching pkill patterns
         self.assertNotIn("pkill -f 'opencode serve", src)
 
@@ -206,6 +217,14 @@ class Wiring(unittest.TestCase):
         # Persistent custom-model banner removed (V1.6.30): the way back to the
         # primary model lives in the model picker's switch row, not a banner.
         self.assertNotIn("R.string.main_extra_71", src)
+        # V2.0.3: per-entry switch — the picker lists every configured API entry
+        # and Apply routes through switchCustomApiEntry → switchToCustomEntry.
+        self.assertIn("void switchCustomApiEntry(", src)
+        remote = (JAVA / "RemoteApp.java").read_text()
+        self.assertIn("void switchToCustomEntry(", remote)
+        picker = (JAVA / "ModelPicker.java").read_text()
+        self.assertIn("switchCustomApiEntry(e)", picker)
+        self.assertIn("app.customApi().entries", picker)
 
     def test_resources_bilingual(self):
         zh = (RES / "values/strings-main.xml").read_text()
@@ -214,6 +233,66 @@ class Wiring(unittest.TestCase):
             k = f"main_extra_{n}"
             self.assertIn(f'name="{k}"', zh, k)
             self.assertIn(f'name="{k}"', en, k)
+
+    def test_entry_switch_hot_path(self):
+        # V2.0.6: entry→entry switches stay on the live bridge — the serve
+        # child is re-exec'd in place; only channel hops reconnect.
+        remote = (JAVA / "RemoteApp.java").read_text()
+        self.assertIn('final boolean hotSwitch = "opencode".equals(profile.runtime)', remote)
+        # The kill must be skipped on the hot path WITHOUT returning early —
+        # an early return skipped the model update + server/restart RPC too.
+        self.assertIn('if (!hotSwitch) {', remote)
+        self.assertNotIn('if (hotSwitch) return;', remote)
+        self.assertIn('request("server/restart"', remote)
+        self.assertNotIn('void coldReconnectCustom()', remote)
+        # provider config rewrite happens before the hot/cold split
+        self.assertLess(remote.index('if (!hotSwitch) {'),
+                        remote.index('CustomConfigTransaction.apply('))
+        # the key must be written into the config as a LITERAL (no {file:} or
+        # {env:} reference - opencode 1.19.4 sends those verbatim -> HTTP 401)
+        self.assertNotIn('CustomApiConfig.SECRET_PATH', remote)
+        self.assertNotIn('{file:', remote)
+        bridge = (ASSETS / "remote_session.py").read_text()
+        self.assertIn("if method == 'server/restart':", bridge)
+        self.assertIn("def restart_server(self):", bridge)
+        self.assertIn("self.command = command", bridge)
+        self.assertIn("if method == 'thread/unsubscribe':", bridge)
+        self.assertIn("SCRIPT_VERSION = 38", bridge)
+        # Deletion must survive everything: opencode's DELETE API is a fake
+        # success (200 text/html), so the bridge keeps persisted tombstones
+        # honored by thread/list and thread/read.
+        self.assertIn("def load_tombstones(self):", bridge)
+        self.assertIn("tombstones.json", bridge)
+        self.assertIn("self.tombstones.add(tid)", bridge)
+        self.assertIn("if sid in tombstones:", bridge)
+        self.assertIn("if thread_id in self.tombstones or thread_id in _latest_tombstones():", bridge)
+        # thread/list must not blanket-drop "New session" titles: real work is
+        # auto-titled that way too. Probe messages once, list under first user
+        # message, keep empty shells hidden.
+        self.assertIn("self.session_probe[sid] = first_user_text(probed.get(sid, []))", bridge)
+        # Probes must be concurrent (a serial sweep stalls the whole bridge),
+        # cached across daemon restarts, and use the last message's finish flag
+        # to detect tasks still running after a bridge restart.
+        self.assertIn("ThreadPoolExecutor(max_workers=8)", bridge)
+        self.assertIn("probe.json", bridge)
+        self.assertIn("head.get('finish')", bridge)
+        # thread/read reports the session's model so opening history does not
+        # fall back to the "default model" picker entry.
+        self.assertIn("response['model'] = model", bridge)
+        self.assertIn("return turns, model", bridge)
+        # history rebuilds must carry execution detail (phone reads
+        # aggregatedOutput) instead of empty shells.
+        self.assertIn("'aggregatedOutput': captured,", bridge)
+        self.assertIn("(state.get('input') or {}).get('command')", bridge)
+        # Legacy SCRIPT <=26 acknowledges shutdown without exiting its daemon;
+        # upgrade must verify daemon.pid then reclaim only that granted bridge.
+        self.assertIn("def retire_granted_legacy_daemon(folder):", bridge)
+        self.assertIn("if not wait_pid_exit(folder, timeout=2.0):", bridge)
+        self.assertIn("os.killpg(pid, signal.SIGTERM)", bridge)
+        self.assertIn("lanpt-workspace", bridge)
+        # workspace rules are auto-created on the PC (models must not read keys)
+        self.assertIn("WORKSPACE_AGENTS_MD", bridge)
+        self.assertIn("agents.write_text(WORKSPACE_AGENTS_MD", bridge)
 
 
 if __name__ == "__main__":

@@ -19,6 +19,8 @@
 | 连接诊断 | `ConnectionPreflight` 生成无凭据输出的环境探测并解析分类失败、检查公开账户状态；`ConnectionSetupUi` 拥有用户显式关闭持久模式的确认窗口。探测有超时／输出上限，关闭或连接 generation 变化使后续初始化无效 |
 | 强制权限审批 | `ForcedApprovalController` 调度已显式授权的命令／文件审批，按会话和连接 generation 隔离、去重和失败恢复；State 内的 Burst 用单调时钟记录实时唯一权限请求、保留最近 3 个时间点，并在第 4 个到达时判断 30 秒窗口资格。授权与窗口均由现有 `ConversationState.capture/apply` 捕获该 State，不保存到偏好；重放不计数，成功应用新权限结束授权时清空窗口。`PermissionPicker` 拥有权限列表／警告窗口并释放监听器，只在已确认启用期间显示强制允许项；下一轮请求捕获权限选择与授权 revision，成功响应只能结束它实际应用的授权 |
 | 配置／数据 | `Vault`／`Profile` 保存连接；模型、额度、权限、版本、线程快照与问答日志由对应类解析 |
+| 自定义模型 | `CustomApiConfig` 解析配置；`ConversationState` 隔离待携带上下文，`TurnController` 在确认发送后清除；远端桥接只重启自有进程组，并检查活动任务和审批 |
+| 自定义配置事务 | `CustomConfigTransaction` 通过 SFTP 暂存请求并调用 `custom_config_transaction.py`；远端使用锁、预写恢复日志和单文件原子替换，发现外部修改时停止恢复。与不参与锁协议的程序之间不承诺隔离 |
 | 后台／通知 | `ConnectionService` 维持前台服务与唤醒锁；`LiveStatusNotifications` 及 `LiveActionReceiver` 处理会话通知、请求身份和点击路由 |
 | 远端资产 | `remote_session.py` 托管 Codex 进程、SQLite 事件及重放；`conversation_state.py` 有界读取问答日志；`remote_maintenance.py` 检查／更新／明确重启 |
 
@@ -100,3 +102,11 @@ Canvas 由 terminal.js 在 open 后 loadAddon，激活失败释放部分 addon �
 2026-10-28：用量请求的 attempt 在成功、失败、超时和断开时失效；通用请求错误分支不再改写该状态，弹窗关闭回调只释放自身引用。项目路径排序复用 RemoteFiles 的专用比较器，时间缺失排末尾；终端仅设置系统导航栏颜色／对比，保留既有 insets 和 IME 布局。
 
 2026-10-29：`SandboxSettings` 管理应用名单与网络选项（经 Go 绑定桥）；`TsnetVpnService` 串行管理 TUN 与生命周期，排除自身应用。
+
+跨模式 Codex 列表读取远端只读状态索引并过滤归档、删除标记与缺失日志；索引不可用时返回错误，不扫描原始 rollout 推测有效历史。会话 ID 与缓存来源不一致时，已知的 Codex UUID 和 OpenCode `ses_` ID 决定读取路由；后台结果通过 ConversationStore 隔离。
+
+`ProjectVisibility` 在独立首选项中以目录路径摘要记录每个连接的项目隐藏状态；项目发现和历史列表展示遵守该状态，主动选择目录时解除隐藏。跨模式历史以 ConversationStore 中的原会话只读状态展示，显式接续时才切换到当前模式草稿并复制有界上下文。共享删除标记使用文件锁和原子替换，避免并发删除覆盖。
+
+`ProjectDirectoryCheck` 在后台复用单个 SFTP 通道检查候选目录；界面只隐藏确认无效的路径，连接代次和窗口扫描序号阻止旧结果更新页面。`ReplyTimestamp` 解析、格式化并按连接和会话保存回复完成时间；桥接记录可用的实时和历史时间，不能取得时不伪造。
+
+`ProjectHistoryFilter` 按连接代次维护目录检查结果和每路径请求序号，历史及工作面板只过滤已确认缺失的目录；目录检查不删除远端历史。连接 `Profile.cwd` 保持用户配置，当前会话或新会话草稿的工作目录由已有 `ConversationState.cwd` 承载，发送新会话使用当前工作目录，主页回到连接配置目录。

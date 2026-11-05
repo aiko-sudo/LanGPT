@@ -50,7 +50,8 @@ def main():
     source = (SRC / 'RemoteApp.java').read_text()
     methods = '\n'.join(method(source, sig) for sig in (
         '  boolean canSwitchConversation()', '  boolean recoveryInProgress()',
-        '  void landHome()', '  public void viewConversation(String id)'))
+        '  void landHome()', '  public void viewConversation(String id)',
+        '  private void openCrossChannelConversation(ConversationState s)', '  private void resumeCrossChannel(ConversationState source)'))
     with tempfile.TemporaryDirectory(dir=ROOT / 'tools', prefix='history-navigation-test-', ignore_cleanup_errors=True) as path:
         path = Path(path)
         files = {
@@ -61,14 +62,24 @@ def main():
 import java.util.*;import android.os.Looper;
 class RemoteApp {
  final Looper main=Looper.myLooper();final ConversationStore conversationStore=new ConversationStore(this);
+ final Preferences preferences=new Preferences(); static class Preferences { String lastSessionModel(){return "last-model";} }
  final Set<String> loadedThreads=new HashSet<>();final Map<String,String> conversationLoads=new HashMap<>();
  String threadId="",model="",reasoningEffort="",permissionMode="",pendingNavigation="",loadingThread="",restoringThread="",replayThread="";
- boolean connected=true,restartingRemote,attaching,busy,replaying,homeVisible=true,pendingHomeLanding;
+ boolean connected=true,restartingRemote,attaching,busy,replaying,readOnly,homeVisible=true,pendingHomeLanding;
  long ctxUsedTokens=-1,ctxTotalTokens=-1;
  int reads,progress;Profile profile=new Profile();
  void checkpoint(){conversationStore.checkpoint();}void changed(){checkpoint();}
  void select(String id){conversationStore.select(id);homeVisible=false;}
+ void leaveIdleConversation(){} boolean currentThreadRunning(){return busy;} void releaseThread(String id){loadedThreads.remove(id);}
  void readThread(String id,boolean readonly){if(!readonly)throw new AssertionError("not read only");reads++;}
+ String conversationChannel(String id,String runtime){return runtime.isEmpty()?"codex":runtime;}
+ void readOtherThread(String id,String channel){}
+ String error="",state="",threadTitle="",threadCwd="",pendingContextPrefix="";
+ final List<ChatItem> items=new ArrayList<>();
+ static String buildContextPrefix(List<ChatItem> items){return items.isEmpty()?"":items.get(0).text;}
+ void testCross(ConversationState s){openCrossChannelConversation(s);}
+ void testResume(ConversationState s){resumeCrossChannel(s);}
+
  void restoreLastSessionChoices(){}
  void restoreServiceTier(ConversationState s,String id){}void restorePermission(ConversationState s,String id){}void restoreInteractions(ConversationState s,String id){}
  void deliver(String id){conversationStore.dispatch(id,()->{progress=99;busy=false;conversationLoads.remove(id);changed();});}
@@ -76,12 +87,13 @@ class RemoteApp {
             'app/remotessh/ConversationState.java': '''package app.remotessh;
 import java.util.*;import org.json.JSONObject;
 class ConversationState {
- String threadId="",model,effort,permission;boolean busy,replaying,readOnly;int progress;
+ String threadId="",model,effort,permission,runtime="",title="",cwd=""; final List<ChatItem> items=new ArrayList<>(); boolean busy,replaying,readOnly;int progress;
  final List<JSONObject> approvals=new ArrayList<>();
- void capture(RemoteApp a){threadId=a.threadId;busy=a.busy;replaying=a.replaying;progress=a.progress;}
- void apply(RemoteApp a){a.threadId=threadId;a.busy=busy;a.replaying=replaying;a.progress=progress;}
+ void capture(RemoteApp a){threadId=a.threadId;busy=a.busy;replaying=a.replaying;readOnly=a.readOnly;progress=a.progress;title=a.threadTitle;cwd=a.threadCwd;items.clear();items.addAll(a.items);}
+ void apply(RemoteApp a){a.threadId=threadId;a.busy=busy;a.replaying=replaying;a.readOnly=readOnly;a.progress=progress;a.threadTitle=title;a.threadCwd=cwd;a.items.clear();a.items.addAll(items);}
 }
-class Profile {String cwd="",lastThread="";}
+class Profile {String cwd="",lastThread="",runtime="codex";}
+class ChatItem {String text;ChatItem(String t){text=t;}}
 ''',
             'app/remotessh/HistoryNavigationTest.java': '''package app.remotessh;
 public class HistoryNavigationTest {
@@ -89,6 +101,7 @@ public class HistoryNavigationTest {
  public static void main(String[] args){
  RemoteApp a=new RemoteApp();a.viewConversation("A");
  check(a.reads==1 && a.recoveryInProgress(),"A history starts read-only and shows its own loading");
+ check(a.model.equals("last-model"),"history inherits saved model when unset");
  a.landHome();check(a.threadId.isEmpty() && !a.recoveryInProgress() && a.canSwitchConversation(),"return home while A is loading never blocks");
  a.viewConversation("B");check(a.threadId.equals("B") && a.reads==2,"switch to B without waiting for A");
  a.deliver("A");check(a.threadId.equals("B") && a.busy && a.recoveryInProgress(),"late A result cannot switch page or clear B loading");
@@ -97,6 +110,11 @@ public class HistoryNavigationTest {
  a.viewConversation("A");check(a.progress==99 && a.reads==3,"background result retained in original cache");
  a.landHome();a.restoringThread="C";a.loadingThread="C";
  check(a.canSwitchConversation() && !a.recoveryInProgress(),"unrelated restore cannot lock home");
+ a.landHome(); a.conversationStore.dispatch("foreign",()->{a.items.add(new ChatItem("old context"));});
+ ConversationState foreign=a.conversationStore.get("foreign"); a.testCross(foreign);
+ check(a.readOnly && !a.homeVisible && a.threadId.equals("foreign"),"cross-channel history remains read-only on its own page");
+ a.testResume(foreign);check(!a.readOnly && !a.homeVisible && a.threadId.isEmpty() && a.pendingContextPrefix.equals("old context"),"explicit resume copies context to new channel draft");
+ a.landHome();
  a.pendingHomeLanding=true;a.viewConversation("C");
  check(a.threadId.equals("C") && !a.pendingHomeLanding && a.reads==3,"explicit navigation wins and reuses pending restore");
  }
@@ -135,10 +153,12 @@ public class HistoryNavigationTest {
     assert 'isThreadNotLoaded' in remote and '该会话未在电脑端加载' in remote
     assert 'isRemoteMissingThread' in remote and 'getStringSet(profile.id' in remote
     assert 'startAnimation' not in source
-    assert 'action(UiText.get(R.string.main_text_12),()->app.resume(app.threadId))' in source
-    assert 'action(UiText.get(R.string.main_text_13),this::startNewChat)' in source
+    assert 'action(UiText.get(R.string.main_text_12), () -> app.resume(app.threadId))' in source
+    assert 'else if (which == 4) startNewChat();' in settings
+    assert 'roActions.addView(resumeButton, new LinearLayout.LayoutParams(-1, -2))' in source
+    assert 'newChatButton' not in source
     assert_resource(source,'main_text_12','接续')
     assert_resource(source,'main_text_13','新会话')
     assert '重连并接续' not in source
-    print('PASS history page keeps resume/new-chat visible while read-only (source checks)')
+    print('PASS history page offers full-width resume and new chat in the main menu (source checks)')
 if __name__=='__main__':main()

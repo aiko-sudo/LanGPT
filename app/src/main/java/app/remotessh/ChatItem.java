@@ -6,6 +6,7 @@ public final class ChatItem {
   public final java.util.List<String> images = new java.util.ArrayList<>();
   public String id, type, text = "", detail = "", status = "";
   public String phase = "", turnId = "";
+  public long repliedAt;
   public JSONObject interaction;
   public Integer exitCode;
   public final java.util.List<String> changedPaths = new java.util.ArrayList<>();
@@ -42,6 +43,7 @@ public final class ChatItem {
 
   public static ChatItem from(JSONObject j) {
     ChatItem m = new ChatItem(j.optString("id"), j.optString("type"), j.optString("text"));
+    m.repliedAt = ReplyTimestamp.parse(j);
     m.status = j.optString("status");
     m.phase = j.optString("phase");
     m.turnId = j.optString("turnId");
@@ -59,7 +61,10 @@ public final class ChatItem {
               b.append(v.optString("text"));
             }
           }
-        m.text = b.toString();
+        // codex sends content[]; the opencode bridge sends plain top-level
+        // text — keep the constructor's value when no content[] parts exist,
+        // otherwise every restored user turn renders empty.
+        if (b.length() > 0) m.text = b.toString();
         break;
       case "imageView":
         m.text = "查看图片";

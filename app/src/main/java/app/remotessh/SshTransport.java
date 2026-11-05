@@ -404,7 +404,7 @@ public final class SshTransport implements AutoCloseable {
     }
   }
 
-  private ChannelSftp sftp() throws Exception {
+  ChannelSftp sftp() throws Exception {
     // Retry only a channel-open failure (before any file operation starts).
     // Replaying put/rename after an ambiguous transfer failure could duplicate writes.
     for (int attempt = 0; attempt < 2; attempt++) {

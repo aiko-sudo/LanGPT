@@ -32,6 +32,27 @@ public class MultiConversationTest {
     app.threadId="B"; app.threadTitle="任务 B"; app.busy=true; app.turnId="turn-B";
     app.items.add(new ChatItem("same","agentMessage","B:")); app.changed();
   }
+  @Test public void crossChannelHistoryStaysReadOnlyUntilResume() {
+    app.profile.runtime = "opencode";
+    app.busy = false; app.turnId = ""; app.homeVisible = true;
+    String id = "01234567-89ab-cdef-0123-456789abcdef";
+    app.inConversation(id, () -> { app.items.clear(); app.items.add(new ChatItem("u", "userMessage", "hello")); });
+    app.viewConversation(id);
+    assertEquals(id, app.threadId); assertTrue(app.readOnly); assertFalse(app.homeVisible);
+    app.resume(id);
+    assertEquals("", app.threadId); assertFalse(app.readOnly); assertFalse(app.homeVisible);
+    assertTrue(app.pendingContextPrefix.contains("hello"));
+    app.newChat(); assertEquals("", app.pendingContextPrefix);
+  }
+
+  @Test public void hiddenProjectsCanBeExplicitlyRestored() {
+    String id = "fixture-profile", path = "/work/hidden";
+    ProjectVisibility.setHidden(app, id, path, true);
+    assertTrue(ProjectVisibility.isHidden(app, id, path));
+    ProjectVisibility.setHidden(app, id, path, false);
+    assertFalse(ProjectVisibility.isHidden(app, id, path));
+  }
+
   @Test public void simultaneousDeltasAndCompletionStayInTheirThread() throws Exception {
     second(); emit("item/agentMessage/delta","A","itemId","same","delta","后台输出");
     assertEquals("B:", app.items.get(0).text); assertEquals("B",app.threadId);

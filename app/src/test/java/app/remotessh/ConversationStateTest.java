@@ -27,6 +27,35 @@ public class ConversationStateTest {
     event.invoke(app, Json.obj("method", method, "params", params));
   }
 
+  @Test public void knownThreadIdsOverrideIncorrectCachedRuntime() {
+    assertEquals("opencode", RemoteApp.conversationChannel("ses_example", "codex"));
+    assertEquals("codex", RemoteApp.conversationChannel("01234567-89ab-cdef-0123-456789abcdef", "opencode"));
+    assertEquals("claude", RemoteApp.conversationChannel("other", "claude"));
+  }
+
+  @Test public void historicalThreadDoesNotChangeConnectionProject() throws Exception {
+    app.profile = new Profile(); app.profile.cwd = "/configured"; app.connected = true;
+    app.homeVisible = false;
+    Method apply = RemoteApp.class.getDeclaredMethod("applyThread", JSONObject.class, String.class, boolean.class);
+    apply.setAccessible(true);
+    apply.invoke(app, Json.obj("thread", Json.obj("id", "active", "cwd", "/history", "turns", new org.json.JSONArray())), "active", true);
+    assertEquals("/configured", app.profile.cwd);
+    assertEquals("/history", app.currentProject());
+    app.landHome();
+    assertEquals("/configured", app.currentProject());
+    assertEquals("/configured", app.profile.cwd);
+  }
+
+  @Test public void chosenProjectIsConversationScoped() {
+    app.profile = new Profile(); app.profile.cwd = "/configured"; app.connected = true;
+    app.homeVisible = true; app.threadId = ""; app.busy = false;
+    assertTrue(app.useProject("/chosen"));
+    assertEquals("/configured", app.profile.cwd);
+    assertEquals("/chosen", app.currentProject());
+    app.landHome();
+    assertEquals("/configured", app.currentProject());
+  }
+
   @Test public void replayDoesNotResubmitQueueOrAllowSteeringBeforeCatchup() throws Exception {
     app.profile = new Profile(); app.connected = true; app.busy = true; app.turnId = "run";
     assertTrue(app.queueMessage("保留到手动发送"));

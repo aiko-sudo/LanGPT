@@ -137,7 +137,7 @@ final class AttachmentController {
   public void readMedia(String source, java.io.OutputStream out, long limit, java.util.function.BooleanSupplier active) throws Exception {
     MediaFiles.check(active);
     SshTransport current = app.currentTransport();
-    String cwd = app.profile == null ? "" : app.profile.cwd;
+    String cwd = app.currentProject();
     if (source.startsWith("data:image/")) {
       int comma = source.indexOf(',');
       if (comma < 0 || !source.substring(0, comma).endsWith(";base64") || source.length() > limit * 2) throw new java.io.IOException(UiText.get(R.string.extra_attach_image_invalid));

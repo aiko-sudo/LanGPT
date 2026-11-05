@@ -51,6 +51,7 @@ public final class MainActivity extends Activity {
   private final Map<String, TextView> texts = new HashMap<>();
   private final Map<String, MessageBodyView> messageBodies = new HashMap<>();
   private final Map<String, ChatItem> rendered = new HashMap<>();
+  private final Map<String, TextView> replyHeadings = new HashMap<>();
   private final Map<String, QuestionHistoryView> questionCards = new HashMap<>();
   private TextView historyButton;
   private int historyLimit=60;
@@ -70,7 +71,7 @@ public final class MainActivity extends Activity {
   private DirectoryPicker directoryPicker;
   private LinearLayout readOnlyBar;
   private LinearLayout roActions;
-  private TextView readOnlyLabel,resumeButton,newChatButton;
+  private TextView readOnlyLabel,resumeButton;
   private LoadingSpinner resumeSpinner;
   private boolean visibleActivity;
   private String shownApproval = "";
@@ -366,15 +367,12 @@ public final class MainActivity extends Activity {
     readOnlyLabel.setPadding(dp(4), dp(6), dp(4), dp(6));
     readOnlyBar.addView(readOnlyLabel);
     roActions = row();
-    resumeButton=action(UiText.get(R.string.main_text_12),()->app.resume(app.threadId));newChatButton=action(UiText.get(R.string.main_text_13),this::startNewChat);
-    resumeButton.setContentDescription(UiText.get(R.string.main_text_12));resumeSpinner=new LoadingSpinner(fg,dp(16));
-    TextView[] readOnlyControls = {resumeButton,newChatButton};
-    for (int i=0;i<readOnlyControls.length;i++) {
-      readOnlyControls[i].setSingleLine(true); readOnlyControls[i].setEllipsize(TextUtils.TruncateAt.END);
-      readOnlyControls[i].setPadding(dp(8),dp(12),dp(8),dp(12));
-      LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(0,-2,1);
-      if (i<readOnlyControls.length-1) cp.setMarginEnd(dp(3)); roActions.addView(readOnlyControls[i],cp);
-    }
+    resumeButton = action(UiText.get(R.string.main_text_12), () -> app.resume(app.threadId));
+    resumeButton.setContentDescription(UiText.get(R.string.main_text_12));
+    resumeSpinner = new LoadingSpinner(fg, dp(16));
+    resumeButton.setSingleLine(true); resumeButton.setEllipsize(TextUtils.TruncateAt.END);
+    resumeButton.setPadding(dp(8), dp(12), dp(8), dp(12));
+    roActions.addView(resumeButton, new LinearLayout.LayoutParams(-1, -2));
     readOnlyBar.addView(roActions);
     readOnlyBar.setVisibility(View.GONE);
     center.addView(readOnlyBar);
@@ -556,7 +554,7 @@ public final class MainActivity extends Activity {
 
   private static boolean sameContent(ChatItem a,ChatItem b) {
     return b!=null && a.text.equals(b.text) && a.detail.equals(b.detail) && a.status.equals(b.status)
-        && a.phase.equals(b.phase) && a.type.equals(b.type) && a.images.equals(b.images)
+        && a.phase.equals(b.phase) && a.type.equals(b.type) && a.repliedAt == b.repliedAt && a.images.equals(b.images)
         && Objects.equals(a.interaction==null?null:a.interaction.toString(),b.interaction==null?null:b.interaction.toString());
   }
 
@@ -598,7 +596,6 @@ public final class MainActivity extends Activity {
     }
     readOnlyLabel.setText(UiText.get(R.string.main_text_89));
     boolean available=app.connected && !app.connecting && !recovering;
-    newChatButton.setEnabled(available);
     resumeButton.setEnabled(available && app.readOnly && !app.attaching);
     // Reading project history is not permission to resume a writer.
     updateRecoveryButton(resumeButton,resumeSpinner,resuming,UiText.get(R.string.main_text_104),UiText.get(R.string.main_text_12));
@@ -626,7 +623,7 @@ public final class MainActivity extends Activity {
     permissionButton.setContentDescription(UiText.get(R.string.main_text_107) + (forced ? UiText.get(R.string.main_text_108) : displayedPermission.label(UiText.locale())));
     permissionButton.setTooltipText(forced ? UiText.get(R.string.main_text_109) : displayedPermission.label(UiText.locale()) + (app.permissionMode==PermissionMode.INHERIT && displayedPermission!=PermissionMode.INHERIT ? UiText.get(R.string.main_text_110) : ""));
     permissionButton.invalidate();
-    modelButton.setText(ModelOptions.displayName(app.models, app.model)
+    modelButton.setText((app.model.isEmpty() ? UiText.get(R.string.main_text_100) : ModelOptions.displayName(app.models, app.model))
         + (app.reasoningEffort.isEmpty() ? "" : " · " + ModelOptions.label(app.reasoningEffort))
         + (app.serviceTierSummary().isEmpty() ? "" : " · " + app.serviceTierSummary()));
     RuntimeControls.apply(modelButton, permissionButton, app.runtimeCapabilities);
@@ -641,7 +638,7 @@ public final class MainActivity extends Activity {
       historyButton.setText(UiText.get(R.string.main_extra_5)+start+UiText.get(R.string.main_extra_6));
       for (ChatItem source : presentation.subList(start,presentation.size())) {
         ChatItem snapshot = new ChatItem(source.id, source.type, source.text);
-        snapshot.detail = source.detail; snapshot.status = source.status;
+        snapshot.detail = source.detail; snapshot.status = source.status; snapshot.repliedAt = source.repliedAt;
         snapshot.phase=source.phase;snapshot.turnId=source.turnId;
         if(source.interaction!=null)try{snapshot.interaction=new JSONObject(source.interaction.toString());}catch(JSONException ignored){}
         snapshot.images.addAll(source.images);
@@ -664,6 +661,7 @@ public final class MainActivity extends Activity {
           messages.removeAllViews();
           texts.clear();
           messageBodies.clear();
+          replyHeadings.clear();
           mediaRows.clear();
           mediaSources.clear();
           for(MessageImageTile tile:mediaTiles)tile.release();
@@ -681,6 +679,8 @@ public final class MainActivity extends Activity {
           rendered.put(item.id, item);
           QuestionHistoryView questionCard=questionCards.get(item.id);
           if(questionCard!=null && item.interaction!=null)questionCard.bind(item.interaction);
+          TextView replyHeading = replyHeadings.get(item.id);
+          if (replyHeading != null) replyHeading.setText(replyHeading(item));
           MessageBodyView messageBody = messageBodies.get(item.id);
           if (messageBody != null) messageBody.setSource(item.text);
           TextView view = texts.get(item.id);
@@ -788,6 +788,11 @@ public final class MainActivity extends Activity {
     }
   }
 
+  private String replyHeading(ChatItem item) {
+    String time = ReplyTimestamp.format(item.repliedAt, System.currentTimeMillis(), UiText.locale());
+    return UiText.get(R.string.main_text_122) + (time.isEmpty() ? "" : " · " + time);
+  }
+
   private void addItem(ChatItem item, boolean animate) {
     LinearLayout wrap = column();
     wrap.setGravity(item.user() ? Gravity.END : Gravity.START);
@@ -833,9 +838,11 @@ public final class MainActivity extends Activity {
       proseCard.setPadding(dp(progress?4:14),dp(progress?3:6),dp(progress?4:14),dp(progress?3:8));
       wrap.addView(proseCard,new LinearLayout.LayoutParams(-1,-2));
       if(!progress) {
-        LinearLayout heading=row();TextView kind=text(plan?UiText.get(R.string.main_text_121):UiText.get(R.string.main_text_122),12,muted);heading.addView(kind,new LinearLayout.LayoutParams(0,-2,1));
+        LinearLayout heading=row();TextView kind=text(plan?UiText.get(R.string.main_text_121):replyHeading(item),12,muted);
+        if (!plan) replyHeadings.put(item.id, kind);
+        heading.addView(kind,new LinearLayout.LayoutParams(0,-2,1));
         IconView copyButton=icon("copy",plan?UiText.get(R.string.main_text_123):UiText.get(R.string.main_text_124),()->{ChatItem latest=currentItems.get(item.id);if(latest!=null)copy(latest.text);});
-        heading.addView(copyButton,new LinearLayout.LayoutParams(dp(48),dp(48)));proseCard.addView(heading);
+        heading.addView(copyButton,new LinearLayout.LayoutParams(dp(24),dp(24)));proseCard.addView(heading);
       }
       MessageBodyView messageBody = new MessageBodyView(this,progress?muted:fg,muted,Color.parseColor(isDark()?"#2B2B2B":"#ECEEF1"),this::openLink,this::copy);
       messageBodies.put(item.id,messageBody); proseCard.addView(messageBody,new LinearLayout.LayoutParams(-1,-2));
@@ -843,7 +850,7 @@ public final class MainActivity extends Activity {
       LinearLayout bubbleRow=row();bubbleRow.setGravity(Gravity.END|Gravity.BOTTOM);
       IconView copyButton=icon("copy", UiText.get(R.string.main_text_125), () -> {ChatItem latest=currentItems.get(item.id);if(latest!=null)copy(latest.text);});
       copyButton.alignBottomEnd=true;
-      bubbleRow.addView(copyButton,new LinearLayout.LayoutParams(dp(48),dp(48)));
+      bubbleRow.addView(copyButton,new LinearLayout.LayoutParams(dp(24),dp(24)));
       bubbleRow.addView(content,new LinearLayout.LayoutParams(-2,-2));
       wrap.addView(bubbleRow,new LinearLayout.LayoutParams(-1,-2));
     } else wrap.addView(content, new LinearLayout.LayoutParams(item.prose() ? -2 : -1, -2));
@@ -887,7 +894,7 @@ public final class MainActivity extends Activity {
     boolean stop = app.busy && !hasContent;
     send.icon = stop ? "stop" : "arrow";
     boolean enabled =
-        !app.replaying && !app.readOnly
+        !app.replaying && !app.readOnly && !app.customSwitching
             && !app.attaching
             && (app.busy ? (stop || (app.connected && !app.recoveryInProgress() && !app.threadId.isEmpty())) : (app.connected && !app.recoveryInProgress() && hasContent));
     send.setAlpha(enabled ? 1 : .28f);
@@ -899,6 +906,11 @@ public final class MainActivity extends Activity {
   }
 
   private void sendMessage() {
+    if (app.customSwitching) {
+      // Keep the draft: a prompt fired mid model-switch would be lost.
+      toast("模型切换中，请稍候再发送");
+      return;
+    }
     if (app.readOnly) {
       toast(UiText.get(R.string.main_text_128));
       return;
@@ -1331,16 +1343,22 @@ public final class MainActivity extends Activity {
       toast(UiText.get(R.string.main_text_168));
       return;
     }
-    directoryPicker =
-        new DirectoryPicker(
-            this,
-            app,
-            isDark(),
-            path -> {
-              if (app.useProject(path) && browser != null && browser.isShowing())
-                browser.openProject(path);
-            });
-    directoryPicker.show(app.profile.cwd);
+    // Projects are created under the host's ~/uclaw/project root — start the
+    // picker there when it exists (fallback: last cwd).
+    final String cwd = app.profile.cwd;
+    app.resolveProjectRoot(
+        root -> {
+          directoryPicker =
+              new DirectoryPicker(
+                  this,
+                  app,
+                  isDark(),
+                  path -> {
+                    if (app.useProject(path) && browser != null && browser.isShowing())
+                      browser.openProject(path);
+                  });
+          directoryPicker.show(root.isEmpty() ? cwd : root);
+        });
   }
 
   private void startNewChat() {
@@ -1352,7 +1370,7 @@ public final class MainActivity extends Activity {
       showDrawer();
       return;
     }
-    if (app.profile.cwd.isEmpty()) {
+    if (app.currentProject().isEmpty()) {
       openDirectoryPicker();
       return;
     }
@@ -1516,7 +1534,7 @@ public final class MainActivity extends Activity {
 
   /** Explicit top-right menu. Swiping left remains the work-panel shortcut. */
   private void showSettings() {
-    String[] options = {UiText.get(R.string.main_text_19), UiText.get(R.string.main_text_16), UiText.get(R.string.main_text_17), UiText.get(R.string.main_text_18)};
+    String[] options = {UiText.get(R.string.main_text_19), UiText.get(R.string.main_text_16), UiText.get(R.string.main_text_17), UiText.get(R.string.main_text_18), UiText.get(R.string.main_text_13)};
     String version;
     try { version=getPackageManager().getPackageInfo(getPackageName(),0).versionName; }
     catch (Exception e) { version=getString(R.string.app_name); }
@@ -1525,6 +1543,7 @@ public final class MainActivity extends Activity {
       else if (which == 1) editProfile(new Profile(), true);
       else if (which == 2) editCurrentProfile();
       else if (which == 3) SandboxSettings.show(this);
+      else if (which == 4) startNewChat();
     });
   }
 
@@ -1641,8 +1660,13 @@ public final class MainActivity extends Activity {
 
   /** Confirm + execute the switch to the custom-model API for this connection. */
   void switchToCustomModel() {
-    CenteredMenu.show(this, fg, muted, null, new String[]{UiText.get(R.string.main_extra_69)}, which ->
+    CenteredMenu.show(this, fg, muted, UiText.get(R.string.custom_context_notice), new String[]{UiText.get(R.string.main_extra_69)}, which ->
         app.switchToCustomModel(failure -> toast(UiText.get(R.string.main_extra_70) + failure)));
+  }
+
+  /** Switch the custom channel to a different configured API entry (model picker). */
+  void switchCustomApiEntry(CustomApiConfig.Entry entry) {
+    app.switchToCustomEntry(entry, false, failure -> toast(UiText.get(R.string.main_extra_70) + failure));
   }
 
   /** Leave custom-model mode: reconnect the original codex profile as configured. */
@@ -1913,6 +1937,10 @@ public final class MainActivity extends Activity {
     if(pendingQueueDialog!=null)pendingQueueDialog.dismiss();
     returnToWorkPanel=false;
     switchingConnection=false;
+    // Model/channel switches reuse the SAME profile id, so the cross-profile
+    // branch above never stored the draft — the user's in-progress input was
+    // wiped. Persist unconditionally, then restore from the store below.
+    if(input!=null && app.profile!=null) connectionDrafts.put(app.profile.id, input.getText().toString());
     if(input!=null)input.setText("");
     beginConnect(p);
     switchingConnection=true;

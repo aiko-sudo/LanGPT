@@ -277,6 +277,7 @@
     <string name="main_extra_59">"Compact needs an idle connected conversation"</string>
     <string name="main_extra_60">"Compaction requested; refreshes when done"</string>
     <string name="main_extra_61">"Compact failed: "</string>
+    <string name="custom_context_notice">After switching, your first message includes excerpts from up to 20 recent text messages sent to the selected API provider. Each is limited to 600 characters; attachments, tool results, and older content are omitted. Make sure the content is appropriate to share.</string>
     <string name="main_extra_62">"Custom model API"</string>
     <string name="main_extra_64">"API base URL"</string>
     <string name="main_extra_65">"API key"</string>
@@ -296,4 +297,6 @@
     <string name="main_extra_79">"Name"</string>
     <string name="main_extra_80">"Edit"</string>
     <string name="main_extra_81">"Back to main model"</string>
+    <string name="main_extra_82">"%1$d custom models · picking one switches its API"</string>
+    <string name="main_text_218">Project root (new projects are restricted here; empty defaults to ~/uclaw/project)</string>
 </resources>

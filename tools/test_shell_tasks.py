@@ -36,6 +36,7 @@ class RemoteApp {
   final org.json.JSONArray workThreads=new org.json.JSONArray();
   final org.json.JSONArray threads=new org.json.JSONArray();
   final Set<String> deletedThreadIds=new HashSet<>();
+  final ProjectHistoryFilter historyDirectories=new ProjectHistoryFilter();
   void checkpoint(){}
   boolean threadRunning(JSONObject t){return "active".equals(Json.object(t,"status").optString("type"));}
 ''' + work + '''
@@ -79,7 +80,7 @@ public class ShellTaskTest {
  }
 }
 ''')
-    subprocess.run(['javac','-cp',str(JAR),'-d',d,str(java)],check=True)
+    subprocess.run(['javac','-cp',str(JAR),'-d',d,str(SRC/'ProjectHistoryFilter.java'),str(java)],check=True)
     subprocess.run(['java','-cp',d+os.pathsep+str(JAR),'app.remotessh.ShellTaskTest'],check=True,timeout=30)
 
 # source-level contract checks for the request()/restoreNext() side

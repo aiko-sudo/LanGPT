@@ -8,6 +8,8 @@ public final class Profile {
   public String id = UUID.randomUUID().toString();
   public String name = "", host = "", user = "", password = "", privateKey = "", passphrase = "";
   public String cwd = "", command = "codex app-server", lastThread = "";
+  // 项目根目录：新建项目仅允许在此目录下。留空 = 按 $HOME/uclaw/project 约定解析。
+  public String projectRoot = "";
   // 运行时类型：codex（默认）| opencode | dsh | claude
   public String runtime = "codex";
   public int port = 22;
@@ -60,6 +62,8 @@ public final class Profile {
         user,
         "cwd",
         cwd,
+        "projectRoot",
+        projectRoot,
         "command",
         command,
         "lastThread",
@@ -92,6 +96,8 @@ public final class Profile {
     p.fallbackPort = j.optInt("fallbackPort", 0);
     p.user = j.optString("user");
     p.cwd = j.optString("cwd");
+    p.projectRoot = j.optString("projectRoot");
+    if (!p.projectRoot.startsWith("/")) p.projectRoot = "";
     p.command = j.optString("command", "codex app-server");
     p.lastThread = j.optString("lastThread");
     p.runtime = j.optString("runtime", "codex");

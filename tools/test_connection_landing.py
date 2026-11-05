@@ -62,7 +62,7 @@ public class ConnectionLandingTest {
     activity=(SRC/'MainActivity.java').read_text()
     settings=method(activity,'  private void showSettings()')
     labels=re.search(r'String\[\] options = \{([^}]+)\}',settings).group(1)
-    assert re.findall(r'R\.string\.(\w+)',labels)==['main_text_19','main_text_16','main_text_17','main_text_18']
+    assert re.findall(r'R\.string\.(\w+)',labels)==['main_text_19','main_text_16','main_text_17','main_text_18','main_text_13']
     assert 'which == 0) backgroundSettings();' in settings
     assert 'which == 3) SandboxSettings.show(this);' in settings
     assert 'chooseTheme()' not in settings and 'chooseFontSize()' not in settings
