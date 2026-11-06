@@ -38,7 +38,7 @@ public class Harness {
     has(u.summary(), "Connect to view");
     JSONObject payload = new JSONObject("{\"rateLimits\":{\"limitId\":\"codex\",\"primary\":{\"usedPercent\":20,\"windowDurationMins\":300},\"planType\":\"plus\",\"credits\":{\"hasCredits\":true,\"balance\":\"42\"}}}");
     u.update(payload, true);
-    has(u.summary(), "5h 80%"); has(u.details(), "Plan: plus"); has(u.details(), "Balance 42");
+    has(u.summary(), "Primary 80%"); has(u.details(), "Plan: plus"); has(u.details(), "Balance 42");
     u.update(new JSONObject("{\"rateLimits\":{\"limitId\":\"codex\",\"primary\":null,\"secondary\":{\"usedPercent\":30}}}"), false);
     has(u.summary(), "80%"); has(u.summary(), "Secondary 70%");
     u.updateStats(new JSONObject("{\"summary\":{\"lifetimeTokens\":1234567,\"currentStreakDays\":2,\"longestStreakDays\":3}}"));

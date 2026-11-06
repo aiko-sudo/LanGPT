@@ -89,8 +89,8 @@ def structural() -> None:
     usage_info = main.split("private void usageInfo()")[1].split("private String usageHeaderText")[0]
     assert "view -> usageHeader = view" in usage_info, "menu header view is bound for live repaint"
     assert "dismiss()" in usage_info, "refresh closes the previous dialog"
-    render = main.split("private void render() {")[1].split("\n")[1]
-    assert "usageHeader.setText(usageHeaderText())" in render, "render() repaints the open usage menu"
+    render_head = "\n".join(main.split("private void render() {")[1].split("\n")[1:4])
+    assert "usageHeader.setText(usageHeaderText())" in render_head, "render() repaints the open usage menu"
     from test_history_navigation import assert_resource
     assert_resource(main, 'main_extra_36', '点“刷新”重试')
 

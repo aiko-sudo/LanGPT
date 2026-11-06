@@ -299,4 +299,7 @@
     <string name="main_extra_81">"Back to main model"</string>
     <string name="main_extra_82">"%1$d custom models · picking one switches its API"</string>
     <string name="main_text_218">Project root (new projects are restricted here; empty defaults to ~/uclaw/project)</string>
+    <string name="main_text_219">Pull down for new conversation</string>
+    <string name="main_text_220">Pull down for new conversation</string>
+    <string name="main_text_221">Release for new conversation</string>
 </resources>

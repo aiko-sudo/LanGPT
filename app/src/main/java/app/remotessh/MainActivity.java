@@ -32,6 +32,7 @@ public final class MainActivity extends Activity {
   private IconView send, permissionButton;
   private ProgressBar runningIndicator;
   private LinearLayout attachmentStrip, queuedBar;
+  private TextView pullHint;
   private HorizontalScrollView attachmentScroll;
   private final Map<String, LinearLayout> mediaRows = new HashMap<>();
   private final Map<String, List<String>> mediaSources = new HashMap<>();
@@ -386,7 +387,19 @@ public final class MainActivity extends Activity {
     center.addView(error);
     FrameLayout viewport = new FrameLayout(this);
     center.addView(viewport, new LinearLayout.LayoutParams(-1, 0, 1));
+    pullHint = new TextView(this);
+    pullHint.setTextSize(12);
+    pullHint.setTextColor(fg);
+    pullHint.setGravity(Gravity.CENTER);
+    pullHint.setPadding(dp(12), dp(6), dp(12), dp(6));
+    pullHint.setBackground(rounded(panel, 14));
+    pullHint.setVisibility(View.GONE);
+    viewport.addView(pullHint, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER_HORIZONTAL | Gravity.TOP));
     scroll = new ConversationScrollView(this);
+    scroll.setPullAction(this::pullNewChat, message -> {
+      pullHint.setText(message);
+      pullHint.setVisibility(message.isEmpty() ? View.GONE : View.VISIBLE);
+    });
     scroll.setContentDescription(UiText.get(R.string.main_text_91));
     scroll.setFillViewport(true);
     scroll.setClipToPadding(false);
@@ -559,6 +572,7 @@ public final class MainActivity extends Activity {
   }
 
   private void render() {
+    scroll.armPull(app.homeVisible && app.threadId.isEmpty());
     if (usageHeader != null) usageHeader.setText(usageHeaderText());
     if(switchingConnection && !app.connecting) {
       switchingConnection=false;
@@ -985,7 +999,11 @@ public final class MainActivity extends Activity {
     TextView hint = text(UiText.get(R.string.main_extra_7), 13, muted);
     hint.setPadding(dp(4), 0, dp(4), dp(12)); choices.addView(hint);
     Dialog[] holder = new Dialog[1];
-    choices.addView(action(UiText.get(R.string.main_text_140),()->{holder[0].dismiss();PromptTemplateDialog.show(this,app,input,fg,muted);}));
+    {
+      TextView template = action(UiText.get(R.string.main_text_140),()->{holder[0].dismiss();PromptTemplateDialog.show(this,app,input,fg,muted);});
+      LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(-1, -2); tp.bottomMargin = dp(8);
+      choices.addView(template, tp);
+    }
     String[] labels = {UiText.get(R.string.main_text_141), UiText.get(R.string.main_text_142), UiText.get(R.string.main_text_143)};
     ImagePicker.Source[] sources = ImagePicker.Source.values();
     for (int i = 0; i < labels.length; i++) {
@@ -994,7 +1012,11 @@ public final class MainActivity extends Activity {
       LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2); params.bottomMargin = dp(8);
       choices.addView(option, params);
     }
-    choices.addView(action(UiText.get(R.string.main_text_144),()->{holder[0].dismiss();launchFilePicker();}));
+    {
+      TextView file = action(UiText.get(R.string.main_text_144),()->{holder[0].dismiss();launchFilePicker();});
+      LinearLayout.LayoutParams fp = new LinearLayout.LayoutParams(-1, -2); fp.topMargin = dp(0); fp.bottomMargin = dp(4);
+      choices.addView(file, fp);
+    }
     holder[0] = sheet(UiText.get(R.string.main_text_145), choices);
   }
 
@@ -1359,6 +1381,11 @@ public final class MainActivity extends Activity {
                   });
           directoryPicker.show(root.isEmpty() ? cwd : root);
         });
+  }
+
+  private void pullNewChat() {
+    pullHint.setVisibility(View.GONE);
+    startNewChat();
   }
 
   private void startNewChat() {

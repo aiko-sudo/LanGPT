@@ -173,10 +173,7 @@ public final class UsageLimits {
       if (w == null || w.isNull("usedPercent")) continue;
       double used = w.optDouble("usedPercent", Double.NaN);
       if (!Double.isFinite(used)) continue;
-      long minutes = w.optLong("windowDurationMins", 0);
-      String label = minutes <= 0 ? (key.equals("primary") ? text("主额度", "Primary") : text("次额度", "Secondary"))
-          : minutes % 1440 == 0 ? (minutes / 1440) + text("天", "d")
-          : minutes % 60 == 0 ? (minutes / 60) + text("小时", "h") : minutes + text("分钟", "min");
+      String label = key.equals("primary") ? text("主额度", "Primary") : text("次额度", "Secondary");
       String value = label + " " + Math.round(Math.max(0, Math.min(100, 100 - used))) + "%";
       long resets = w.optLong("resetsAt", 0);
       if (resets > 0)

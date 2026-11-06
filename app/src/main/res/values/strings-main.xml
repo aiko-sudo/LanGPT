@@ -299,4 +299,7 @@
     <string name="main_extra_81">"返回主模型"</string>
     <string name="main_extra_82">"共 %1$d 个自定义模型 · 选择即切换对应 API"</string>
     <string name="main_text_218">项目根目录（新建项目仅限于此，留空默认 ~/uclaw/project）</string>
+    <string name="main_text_219">下拉新建会话</string>
+    <string name="main_text_220">下拉新建会话</string>
+    <string name="main_text_221">松开新建会话</string>
 </resources>

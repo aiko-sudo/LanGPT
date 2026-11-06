@@ -9,7 +9,53 @@ import android.widget.ScrollView;
 public final class ConversationScrollView extends ScrollView {
   private boolean following = true, layingOut, pinning;
   private View horizontalGesture;
+  // Home-screen pull-down shortcut (armed only on the home surface, so chat
+  // scrolling is never intercepted). Reuses the direction-locked gesture the
+  // project page uses for pull-to-refresh.
+  private PullRefreshGesture pullGesture;
+  private Runnable pullAction;
+  private java.util.function.Consumer<String> pullHint;
+  private boolean pullArmed;
   public ConversationScrollView(Context context) { super(context); }
+  void setPullAction(Runnable action, java.util.function.Consumer<String> hint) {
+    this.pullAction = action; this.pullHint = hint;
+    this.pullGesture = new PullRefreshGesture(
+        android.view.ViewConfiguration.get(getContext()).getScaledTouchSlop(),
+        72 * getContext().getResources().getDisplayMetrics().density);
+  }
+  void armPull(boolean armed) {
+    pullArmed = armed && pullGesture != null;
+    if (!armed && pullHint != null && pullGesture != null) { pullGesture.cancel(); pullHint.accept(""); }
+  }
+  @Override public boolean onInterceptTouchEvent(android.view.MotionEvent event) {
+    int action = event.getActionMasked();
+    if (pullArmed && action == android.view.MotionEvent.ACTION_DOWN) {
+      pullGesture.begin(event.getX(), event.getY(), getScrollY() == 0, false);
+    } else if (pullArmed && action == android.view.MotionEvent.ACTION_MOVE
+        && pullGesture.move(event.getX(), event.getY(), getScrollY() == 0)) {
+      return true;
+    }
+    return super.onInterceptTouchEvent(event);
+  }
+  @Override public boolean onTouchEvent(android.view.MotionEvent event) {
+    int action = event.getActionMasked();
+    if (pullArmed && action == android.view.MotionEvent.ACTION_MOVE
+        && pullGesture.move(event.getX(), event.getY(), getScrollY() == 0)) {
+      pullHint.accept(pullGesture.ready()
+          ? UiText.get(R.string.main_text_221) : UiText.get(R.string.main_text_220));
+      return true;
+    }
+    if (pullArmed && action == android.view.MotionEvent.ACTION_UP && pullGesture.pulling()) {
+      boolean ready = pullGesture.release();
+      if (ready) { pullHint.accept(""); pullAction.run(); }
+      else pullHint.accept("");
+      return true;
+    }
+    if (pullArmed && action == android.view.MotionEvent.ACTION_CANCEL) {
+      pullGesture.cancel(); pullHint.accept("");
+    }
+    return super.onTouchEvent(event);
+  }
   public boolean isFollowing() { return following; }
   public void follow() { following = true; requestLayout(); }
   public void read() { following = false; }

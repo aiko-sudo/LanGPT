@@ -82,7 +82,7 @@ final class RemoteBrowser {
     refreshHint.setTextColor(ui.muted);
     refreshHint.setGravity(Gravity.CENTER);
     refreshHint.setVisibility(View.GONE);
-    root.addView(refreshHint);
+    refreshHint.setPadding(0, ui.dp(8), 0, ui.dp(10));
     scroll = new PullRefreshScrollView(activity, this::refreshByPull, message -> {
       refreshHint.setText(message);
       refreshHint.setVisibility(message.isEmpty() ? View.GONE : View.VISIBLE);
@@ -123,6 +123,7 @@ final class RemoteBrowser {
     LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(-2, ui.dp(54));
     pp.leftMargin = ui.dp(10);
     footer.addView(primary, pp);
+    root.addView(refreshHint);
     root.addView(footer);
     search.addTextChangedListener(
         new TextWatcher() {
@@ -152,8 +153,12 @@ final class RemoteBrowser {
 
   void show() {
     ui.show(dialog);
+    loadVerdicts();
     renderedSignature = "";
-    directoryStatus.clear(); directoryScanAt = 0; directoryScanSequence++; directoryScanning = false;
+    // 保留上次目录核实结果做首帧过滤：清空会让服务器上已删除的目录
+    // 先按本地缓存闪现，SFTP 核实回来后才隐藏。这里只重置扫描节流，
+    // 强制重新核实；连接/账号变化由 scanProjectDirectories 的 owner 比对失效。
+    directoryScanAt = 0; directoryScanSequence++; directoryScanning = false;
     if (!app.historyProject.isEmpty()) {
       app.historyProject = "";
       if (app.connected) app.refreshThreads(false);
@@ -162,7 +167,8 @@ final class RemoteBrowser {
     // connection so the project page never dead-ends after a channel switch.
     app.refreshOtherChannelThreads();
     filter = app.profile == null ? (app.vault.profiles.isEmpty() ? "" : app.vault.profiles.get(0).id) : app.profile.id;
-    refresh();
+    scanProjectDirectories();   // 核实与首帧渲染并行，压缩目录行出现延迟
+    refreshNow();
   }
 
   boolean isShowing() {
@@ -181,12 +187,41 @@ final class RemoteBrowser {
     refresh();
   }
 
-  void refresh() {
+  // 首次打开时多个异步源（会话刷新、跨通道、目录核实、工作区扫描）几乎
+  // 同时回包，逐次全量重建会让列表连续跳动。合并 150ms 窗口内的变化，
+  // 最后一帧统一重建一次。
+  private String pendingSignature;
+  private boolean renderScheduled;
+  void refreshNow() {
+    renderScheduled = false;
+    pendingSignature = null;
     if (!isShowing()) return;
-    subtitle.setText("");
     String signature = signature();
     if (signature.equals(renderedSignature)) return;
     renderedSignature = signature;
+    renderNow();
+  }
+
+  void refresh() {
+    if (!isShowing()) return;
+    String signature = signature();
+    if (signature.equals(renderedSignature)) return;
+    pendingSignature = signature;
+    if (renderScheduled) return;
+    renderScheduled = true;
+    ui.activity.getWindow().getDecorView().postDelayed(() -> {
+      renderScheduled = false;
+      if (!isShowing()) { pendingSignature = null; return; }
+      String want = pendingSignature;
+      pendingSignature = null;
+      if (want == null || want.equals(renderedSignature)) return;
+      renderedSignature = want;
+      renderNow();
+    }, 150);
+  }
+
+  private void renderNow() {
+    subtitle.setText("");
     heading.setText(project.isEmpty() ? UiText.get(R.string.work_text_111) : RemoteDirectory.name(project));
     heading.setMaxLines(1);
     heading.setEllipsize(TextUtils.TruncateAt.END);
@@ -230,6 +265,25 @@ final class RemoteBrowser {
   }
 
   private final Map<String, Boolean> directoryStatus = new HashMap<>();
+  // verdict 持久化：重启后首帧即有先验（存在→零延迟显示；不存在→永不闪现）。
+  private void loadVerdicts() {
+    try {
+      String key = "dirverdicts:" + (app.profile == null ? "default" : app.profile.id);
+      String raw = ui.activity.getSharedPreferences("remote_browser", 0).getString(key, "");
+      if (raw.isEmpty()) return;
+      org.json.JSONObject o = new org.json.JSONObject(raw);
+      java.util.Iterator<String> it = o.keys();
+      while (it.hasNext()) { String path = it.next(); directoryStatus.put(path, o.getBoolean(path)); }
+    } catch (Exception ignored) {}
+  }
+  private void saveVerdicts() {
+    try {
+      String key = "dirverdicts:" + (app.profile == null ? "default" : app.profile.id);
+      org.json.JSONObject o = new org.json.JSONObject();
+      for (java.util.Map.Entry<String, Boolean> e : directoryStatus.entrySet()) o.put(e.getKey(), e.getValue());
+      ui.activity.getSharedPreferences("remote_browser", 0).edit().putString(key, o.toString()).apply();
+    } catch (Exception ignored) {}
+  }
   private long directoryScanAt;
   private int directoryScanSequence;
   private boolean directoryScanning;
@@ -256,16 +310,18 @@ final class RemoteBrowser {
     long now = android.os.SystemClock.elapsedRealtime();
     if (key.equals(directoryScanKey) && now - directoryScanAt < 3000) return;
     String owner = current.id + ":" + app.connectionGeneration();
-    if (!owner.equals(directoryStatusOwner)) { directoryStatus.clear(); directoryStatusOwner = owner; }
+    directoryStatusOwner = owner;   // 不清空：路径结论作先验跨连接保留
     directoryScanKey = key; directoryScanAt = now; directoryScanning = true;
     int sequence = ++directoryScanSequence;
     app.checkProjectDirectories(paths, result -> {
       if (sequence != directoryScanSequence) return;
       directoryScanning = false;
       if (!isShowing() || app.profile != current) return;
-      directoryStatus.clear();
+      // 路径级合并：保留其他路径的历史结论，仅覆盖本次扫描过的路径。
+      // 跨连接保留"存在"结论作先验（首帧零延迟），"不存在"结论永不复活闪现。
       if (result != null) directoryStatus.putAll(result);
-      refresh();
+      saveVerdicts();
+      refreshNow();
     });
   }
 
@@ -384,7 +440,11 @@ final class RemoteBrowser {
         java.util.List<String> workspace = workspaceProjects.get(p.id);
         if (workspace != null) paths.addAll(workspace);
         for (String path : paths) {
-          if (ProjectVisibility.isHidden(app, p.id, path) || (p.id + ":" + app.connectionGeneration()).equals(directoryStatusOwner) && Boolean.FALSE.equals(directoryStatus.get(path)) || !matches(path)) continue;
+          // 路径级先验：上次或本次核实"存在"才显示——已删目录永不闪现，
+          // 正常项目首帧零延迟（用上次结论），全新目录等本次核实（晚零点几秒）。
+          // 离线无法核实时显示缓存目录。
+          boolean show = Boolean.TRUE.equals(directoryStatus.get(path)) || !app.connected;
+          if (ProjectVisibility.isHidden(app, p.id, path) || !show || !matches(path)) continue;
           count++;
           LinearLayout row = ui.row();
           row.setPadding(0, ui.dp(4), 0, ui.dp(4));

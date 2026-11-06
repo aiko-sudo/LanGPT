@@ -2,6 +2,8 @@
 
 **中文** | [English](README.en.md)
 
+当前版本：V2.2.3 / versionCode 198。
+
 通过 SSH 在 Android 手机上使用远端 Codex 的原生客户端。以图形界面管理项目、对话、权限审批和附件，并内置 SFTP 文件管理、Termux 风格 SSH 终端。
 
 模型推理与 Codex 登录发生在远端；手机负责交互和文件传输。应用通过 SSH 启动 `codex app-server`，无需另行部署 Web 服务。
